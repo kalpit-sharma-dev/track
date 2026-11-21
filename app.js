@@ -499,21 +499,27 @@ function populateTeamDropdowns() {
             const isFilter = id.startsWith('filter');
             dropdown.innerHTML = isFilter ? '<option value="">All Teams</option>' : '<option value="">Select Team</option>';
             appData.teams.forEach(team => {
-                dropdown.innerHTML += `<option value="${team.id}">${team.name}</option>`;
+                dropdown.innerHTML += `<option value="${team.id}">${escapeHtml(team.name)}</option>`;
             });
             dropdown.value = currentValue;
         }
     });
     
     // Populate owner filter
-    const owners = [...new Set(appData.actions.map(a => a.owner))].filter(o => o).sort();
+    const owners = [...new Set(appData.actions.flatMap(action => splitOwnerNames(action.owner)))].sort((a, b) => a.localeCompare(b));
     const ownerFilter = document.getElementById('filterActionOwner');
     if (ownerFilter) {
+        const currentOwner = ownerFilter.value;
         ownerFilter.innerHTML = '<option value="">All Owners</option>';
         owners.forEach(owner => {
-            ownerFilter.innerHTML += `<option value="${owner}">${owner}</option>`;
+            ownerFilter.innerHTML += `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`;
         });
+        if (owners.includes(currentOwner)) ownerFilter.value = currentOwner;
     }
+}
+
+function splitOwnerNames(value) {
+    return String(value || '').split(',').map(name => name.trim()).filter(Boolean);
 }
 
 // ==================== UPDATES ====================
@@ -685,7 +691,7 @@ function openEditUpdateModal(id) {
     const teamDropdown = document.getElementById('editUpdateTeam');
     teamDropdown.innerHTML = '<option value="">Select Team</option>';
     appData.teams.forEach(team => {
-        teamDropdown.innerHTML += `<option value="${team.id}">${team.name}</option>`;
+        teamDropdown.innerHTML += `<option value="${team.id}">${escapeHtml(team.name)}</option>`;
     });
     teamDropdown.value = update.teamId || '';
     
@@ -950,9 +956,9 @@ function renderActions(filteredActions = null) {
                     <span class="priority-badge ${action.priority}">${action.priority}</span>
                     <div class="action-title">${escapeHtml(action.title)}</div>
                     <div class="action-owner">👤 ${escapeHtml(action.owner)}</div>
-                    ${team ? `<div style="font-size: 0.7rem; color: ${team.color}; margin-top: 6px; font-weight: 600;">● ${team.name}</div>` : ''}
+                    ${team ? `<div style="font-size: 0.7rem; color: ${team.color}; margin-top: 6px; font-weight: 600;">● ${escapeHtml(team.name)}</div>` : ''}
                     ${action.dueDate ? `<div class="action-due ${isOverdue ? 'overdue' : ''}">${dueText}</div>` : ''}
-                    ${action.jira ? `<span class="action-jira">${action.jira}</span>` : ''}
+                    ${action.jira ? `<span class="action-jira">${escapeHtml(action.jira)}</span>` : ''}
                     ${action.recurring ? `<span class="recurring-badge">${action.recurring}</span>` : ''}
                 </div>
             `;
@@ -981,7 +987,7 @@ function openEditActionModal(id) {
     const teamDropdown = document.getElementById('editActionTeam');
     teamDropdown.innerHTML = '<option value="">Select Team</option>';
     appData.teams.forEach(team => {
-        teamDropdown.innerHTML += `<option value="${team.id}">${team.name}</option>`;
+        teamDropdown.innerHTML += `<option value="${team.id}">${escapeHtml(team.name)}</option>`;
     });
     teamDropdown.value = action.teamId || '';
     
@@ -1043,7 +1049,8 @@ function filterActions() {
         filtered = filtered.filter(a => a.status === statusFilter);
     }
     if (ownerFilter) {
-        filtered = filtered.filter(a => a.owner === ownerFilter);
+        const wanted = ownerFilter.toLowerCase();
+        filtered = filtered.filter(action => splitOwnerNames(action.owner).some(name => name.toLowerCase() === wanted));
     }
     if (priorityFilter) {
         filtered = filtered.filter(a => a.priority === priorityFilter);
@@ -1385,7 +1392,7 @@ function generateWeeklyReport() {
     
     // Currently working on
     const inProgressList = document.getElementById('weeklyInProgressList');
-    const inProgress = appData.actions.filter(a => a.status === 'in-progress');
+    const inProgress = appData.actions.filter(action => action.status === 'in-progress' && activeDuringWeek(action, weekStart, weekEnd));
     
     if (inProgress.length === 0) {
         inProgressList.innerHTML = '<p class="empty-state">No items currently in progress</p>';
@@ -1403,7 +1410,7 @@ function generateWeeklyReport() {
     
     // Blockers
     const blockersList = document.getElementById('weeklyBlockersList');
-    const blockers = appData.actions.filter(a => a.status === 'blocked');
+    const blockers = appData.actions.filter(action => action.status === 'blocked' && activeDuringWeek(action, weekStart, weekEnd));
     
     if (blockers.length === 0) {
         blockersList.innerHTML = '<p class="empty-state">No blockers reported</p>';
@@ -1422,8 +1429,7 @@ function generateWeeklyReport() {
     // Next week's focus (pending high priority items)
     const nextList = document.getElementById('weeklyNextList');
     const nextFocus = appData.actions
-        .filter(a => a.status === 'pending' && a.priority === 'high')
-        .slice(0, 5);
+        .filter(action => action.status === 'pending' && action.priority === 'high' && activeDuringWeek(action, weekStart, weekEnd));
     
     if (nextFocus.length === 0) {
         nextList.innerHTML = '<p class="empty-state">No high priority items pending</p>';
@@ -1438,6 +1444,16 @@ function generateWeeklyReport() {
             </div>
         `).join('');
     }
+}
+
+function activeDuringWeek(item, weekStart, weekEnd) {
+    const created = item.createdAt ? new Date(item.createdAt) : null;
+    if (created && !Number.isNaN(created.getTime()) && created > weekEnd) return false;
+    if (item.completedAt) {
+        const completed = new Date(item.completedAt);
+        if (!Number.isNaN(completed.getTime()) && completed < weekStart) return false;
+    }
+    return true;
 }
 
 function getDateOfISOWeek(week, year) {
