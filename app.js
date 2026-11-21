@@ -115,6 +115,9 @@ function globalSearch(event) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById('search-view').classList.add('active');
     
+    // Remove active state from nav items when in search
+    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+    
     const results = {
         updates: [],
         actions: [],
@@ -372,6 +375,18 @@ function showView(viewName) {
     
     if (viewName === 'analytics') {
         updateAnalytics();
+    }
+    
+    if (viewName === 'teams') {
+        renderTeams();
+    }
+    
+    if (viewName === 'daily') {
+        renderUpdates();
+    }
+    
+    if (viewName === 'actions') {
+        renderActions();
     }
 }
 
@@ -789,11 +804,17 @@ function renderActions(filteredActions = null) {
     const actions = filteredActions || appData.actions;
     
     const statuses = ['pending', 'in-progress', 'completed', 'blocked'];
+    const statusToId = {
+        'pending': 'pending',
+        'in-progress': 'inProgress',
+        'completed': 'completed',
+        'blocked': 'blocked'
+    };
+    
     statuses.forEach(status => {
-        const container = document.getElementById(`${status.replace('-', '')}ActionItems`) || 
-                          document.getElementById(`${status}ActionItems`);
-        const countEl = document.getElementById(`${status.replace('-', '')}Count`) ||
-                        document.getElementById(`${status}Count`);
+        const idPrefix = statusToId[status];
+        const container = document.getElementById(`${idPrefix}ActionItems`);
+        const countEl = document.getElementById(`${idPrefix}Count`);
         
         if (!container) return;
         
@@ -1711,7 +1732,7 @@ function renderTopPeople(updates) {
         <div class="top-list-item">
             <div class="top-list-rank">${index + 1}</div>
             <div class="top-list-name">${name}</div>
-            <div class="top-list-count">${count} interactions</div>
+            <div class="top-list-count">${count} interaction${count !== 1 ? 's' : ''}</div>
         </div>
     `).join('');
 }
