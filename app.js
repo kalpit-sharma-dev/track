@@ -5,7 +5,11 @@ let appData = {
     updates: [],
     actions: [],
     teams: [],
-    lastSaved: null
+    tags: [],
+    lastSaved: null,
+    settings: {
+        darkMode: false
+    }
 };
 
 // Auto-save file path (for reference)
@@ -20,6 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
     populateTeamDropdowns();
     setDefaultDates();
     updateLastSavedIndicator();
+    applyTheme();
+    checkRecurringActions();
+    populateTagSuggestions();
 });
 
 // Load data from localStorage (with fallback to sessionStorage backup)
@@ -63,9 +70,191 @@ function initializeDefaultData() {
             { id: generateId(), name: 'Drishti AI', description: 'AI and ML initiatives', members: '', color: '#8B5CF6' },
             { id: generateId(), name: 'CQRS', description: 'Command Query Responsibility Segregation', members: 'Kavita, Indra', color: '#EC4899' }
         ],
-        lastSaved: null
+        tags: ['urgent', 'follow-up', 'blocked', 'review-needed', 'completed', 'in-progress'],
+        lastSaved: null,
+        settings: {
+            darkMode: false
+        }
     };
     saveData();
+}
+
+// ==================== DARK MODE ====================
+
+function toggleDarkMode() {
+    appData.settings.darkMode = !appData.settings.darkMode;
+    applyTheme();
+    saveData();
+}
+
+function applyTheme() {
+    const theme = appData.settings?.darkMode ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    
+    const themeIcon = document.querySelector('.theme-icon');
+    if (themeIcon) {
+        themeIcon.textContent = appData.settings?.darkMode ? '☀️' : '🌙';
+    }
+}
+
+// ==================== GLOBAL SEARCH ====================
+
+function globalSearch(event) {
+    const query = event.target.value.trim().toLowerCase();
+    
+    if (query.length < 2) {
+        // If less than 2 characters, go back to previous view
+        const activeNav = document.querySelector('.nav-item.active');
+        if (activeNav) {
+            showView(activeNav.dataset.view);
+        }
+        return;
+    }
+    
+    // Show search results view
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('search-view').classList.add('active');
+    
+    const results = {
+        updates: [],
+        actions: [],
+        teams: []
+    };
+    
+    // Search updates
+    appData.updates.forEach(update => {
+        if (update.description.toLowerCase().includes(query) ||
+            update.people?.toLowerCase().includes(query) ||
+            update.category.toLowerCase().includes(query) ||
+            update.tags?.some(t => t.toLowerCase().includes(query))) {
+            results.updates.push(update);
+        }
+    });
+    
+    // Search actions
+    appData.actions.forEach(action => {
+        if (action.title.toLowerCase().includes(query) ||
+            action.description?.toLowerCase().includes(query) ||
+            action.owner.toLowerCase().includes(query) ||
+            action.jira?.toLowerCase().includes(query)) {
+            results.actions.push(action);
+        }
+    });
+    
+    // Search teams
+    appData.teams.forEach(team => {
+        if (team.name.toLowerCase().includes(query) ||
+            team.description?.toLowerCase().includes(query) ||
+            team.members?.toLowerCase().includes(query)) {
+            results.teams.push(team);
+        }
+    });
+    
+    renderSearchResults(results, query);
+}
+
+function renderSearchResults(results, query) {
+    const container = document.getElementById('searchResults');
+    const totalResults = results.updates.length + results.actions.length + results.teams.length;
+    
+    if (totalResults === 0) {
+        container.innerHTML = `<p class="empty-state">No results found for "${query}"</p>`;
+        return;
+    }
+    
+    let html = `<p style="margin-bottom: 20px; color: var(--text-secondary);">Found ${totalResults} result${totalResults !== 1 ? 's' : ''} for "<strong>${query}</strong>"</p>`;
+    
+    if (results.updates.length > 0) {
+        html += `
+            <div class="search-section">
+                <h4>📝 Updates (${results.updates.length})</h4>
+                ${results.updates.slice(0, 10).map(update => `
+                    <div class="search-item" onclick="showView('daily')">
+                        <strong>${highlightText(update.description, query)}</strong>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                            ${formatDate(update.date, 'short')} • ${update.category}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    if (results.actions.length > 0) {
+        html += `
+            <div class="search-section">
+                <h4>✅ Action Items (${results.actions.length})</h4>
+                ${results.actions.slice(0, 10).map(action => `
+                    <div class="search-item" onclick="showView('actions'); openEditActionModal('${action.id}')">
+                        <strong>${highlightText(action.title, query)}</strong>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                            Owner: ${action.owner} • Status: ${action.status}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    if (results.teams.length > 0) {
+        html += `
+            <div class="search-section">
+                <h4>👥 Teams (${results.teams.length})</h4>
+                ${results.teams.map(team => `
+                    <div class="search-item" onclick="showView('teams')">
+                        <strong>${highlightText(team.name, query)}</strong>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                            ${team.description || 'No description'}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+function highlightText(text, query) {
+    if (!text) return '';
+    const regex = new RegExp(`(${query})`, 'gi');
+    return text.replace(regex, '<span class="search-highlight">$1</span>');
+}
+
+function closeSearch() {
+    document.getElementById('globalSearch').value = '';
+    showView('dashboard');
+}
+
+function searchByTag(tag) {
+    document.getElementById('globalSearch').value = tag;
+    globalSearch({ target: { value: tag } });
+}
+
+// ==================== TAGS ====================
+
+function populateTagSuggestions() {
+    const container = document.getElementById('tagSuggestions');
+    if (!container) return;
+    
+    // Get all unique tags from updates
+    const allTags = new Set(appData.tags || []);
+    appData.updates.forEach(u => {
+        if (u.tags) u.tags.forEach(t => allTags.add(t));
+    });
+    
+    container.innerHTML = Array.from(allTags).slice(0, 8).map(tag => 
+        `<span class="tag-suggestion" onclick="addTagToInput('${tag}')">${tag}</span>`
+    ).join('');
+}
+
+function addTagToInput(tag) {
+    const input = document.getElementById('updateTags');
+    const currentTags = input.value.split(',').map(t => t.trim()).filter(t => t);
+    if (!currentTags.includes(tag)) {
+        currentTags.push(tag);
+        input.value = currentTags.join(', ');
+    }
 }
 
 // Save data to localStorage and update indicator
@@ -180,6 +369,10 @@ function showView(viewName) {
         setCurrentWeek();
         generateWeeklyReport();
     }
+    
+    if (viewName === 'analytics') {
+        updateAnalytics();
+    }
 }
 
 // Set default dates
@@ -253,6 +446,9 @@ function openAddUpdateModal() {
 function saveUpdate(event) {
     event.preventDefault();
     
+    const tagsInput = document.getElementById('updateTags').value;
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t) : [];
+    
     const update = {
         id: generateId(),
         date: document.getElementById('updateDate').value,
@@ -260,13 +456,22 @@ function saveUpdate(event) {
         teamId: document.getElementById('updateTeam').value,
         description: document.getElementById('updateDescription').value,
         people: document.getElementById('updatePeople').value,
+        tags: tags,
         createdAt: new Date().toISOString()
     };
+    
+    // Add new tags to global tags list
+    tags.forEach(tag => {
+        if (!appData.tags.includes(tag)) {
+            appData.tags.push(tag);
+        }
+    });
     
     appData.updates.unshift(update);
     saveData();
     renderUpdates();
     updateDashboard();
+    populateTagSuggestions();
     closeModal('addUpdateModal');
 }
 
@@ -316,6 +521,10 @@ function renderUpdates(filteredUpdates = null) {
                 other: '📌'
             };
             
+            const tagsHtml = update.tags && update.tags.length > 0 
+                ? `<div class="tags-container">${update.tags.map(tag => `<span class="tag" onclick="event.stopPropagation(); searchByTag('${tag}')">#${tag}</span>`).join('')}</div>` 
+                : '';
+            
             html += `
                 <div class="update-item" style="animation-delay: ${index * 0.05}s; border-left-color: ${team ? team.color : 'var(--primary)'};">
                     <div class="update-header">
@@ -333,6 +542,7 @@ function renderUpdates(filteredUpdates = null) {
                     </div>
                     <p class="update-description">${update.description}</p>
                     ${update.people ? `<p class="update-people"><strong>With:</strong> ${update.people}</p>` : ''}
+                    ${tagsHtml}
                 </div>
             `;
         });
@@ -413,10 +623,12 @@ function saveAction(event) {
         dueDate: document.getElementById('actionDueDate').value,
         teamId: document.getElementById('actionTeam').value,
         jira: document.getElementById('actionJira').value,
+        recurring: document.getElementById('actionRecurring').value,
         status: 'pending',
         notes: '',
         createdAt: new Date().toISOString(),
-        completedAt: null
+        completedAt: null,
+        lastRecurringCreated: null
     };
     
     appData.actions.push(action);
@@ -425,6 +637,85 @@ function saveAction(event) {
     updateDashboard();
     populateTeamDropdowns();
     closeModal('addActionModal');
+}
+
+// ==================== RECURRING ACTIONS ====================
+
+function checkRecurringActions() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    appData.actions.forEach(action => {
+        if (!action.recurring || action.status !== 'completed') return;
+        
+        const lastCreated = action.lastRecurringCreated ? new Date(action.lastRecurringCreated) : new Date(action.completedAt);
+        lastCreated.setHours(0, 0, 0, 0);
+        
+        let shouldCreate = false;
+        const daysDiff = Math.floor((today - lastCreated) / (1000 * 60 * 60 * 24));
+        
+        switch (action.recurring) {
+            case 'daily':
+                shouldCreate = daysDiff >= 1;
+                break;
+            case 'weekly':
+                shouldCreate = daysDiff >= 7;
+                break;
+            case 'biweekly':
+                shouldCreate = daysDiff >= 14;
+                break;
+            case 'monthly':
+                shouldCreate = daysDiff >= 30;
+                break;
+        }
+        
+        if (shouldCreate) {
+            createRecurringAction(action);
+        }
+    });
+}
+
+function createRecurringAction(originalAction) {
+    const newAction = {
+        id: generateId(),
+        title: originalAction.title,
+        description: originalAction.description,
+        owner: originalAction.owner,
+        priority: originalAction.priority,
+        dueDate: calculateNextDueDate(originalAction.recurring),
+        teamId: originalAction.teamId,
+        jira: originalAction.jira,
+        recurring: originalAction.recurring,
+        status: 'pending',
+        notes: '',
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+        parentActionId: originalAction.id
+    };
+    
+    appData.actions.push(newAction);
+    originalAction.lastRecurringCreated = new Date().toISOString();
+    saveData();
+    renderActions();
+}
+
+function calculateNextDueDate(recurring) {
+    const date = new Date();
+    switch (recurring) {
+        case 'daily':
+            date.setDate(date.getDate() + 1);
+            break;
+        case 'weekly':
+            date.setDate(date.getDate() + 7);
+            break;
+        case 'biweekly':
+            date.setDate(date.getDate() + 14);
+            break;
+        case 'monthly':
+            date.setMonth(date.getMonth() + 1);
+            break;
+    }
+    return date.toISOString().split('T')[0];
 }
 
 function renderActions(filteredActions = null) {
@@ -479,6 +770,7 @@ function renderActions(filteredActions = null) {
                     ${team ? `<div style="font-size: 0.7rem; color: ${team.color}; margin-top: 6px; font-weight: 600;">● ${team.name}</div>` : ''}
                     ${action.dueDate ? `<div class="action-due ${isOverdue ? 'overdue' : ''}">${dueText}</div>` : ''}
                     ${action.jira ? `<span class="action-jira">${action.jira}</span>` : ''}
+                    ${action.recurring ? `<span class="recurring-badge">${action.recurring}</span>` : ''}
                 </div>
             `;
         }).join('');
@@ -1063,6 +1355,7 @@ document.addEventListener('keydown', (e) => {
     // Escape to close modals
     if (e.key === 'Escape') {
         document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
+        closeSearch();
     }
     
     // Ctrl/Cmd + N for new update
@@ -1070,4 +1363,403 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         openAddUpdateModal();
     }
+    
+    // Ctrl/Cmd + K for search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('globalSearch').focus();
+    }
 });
+
+// ==================== ANALYTICS ====================
+
+function updateAnalytics() {
+    const days = parseInt(document.getElementById('analyticsRange').value);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    // Filter data for the period
+    const periodUpdates = appData.updates.filter(u => new Date(u.date) >= startDate);
+    const periodActions = appData.actions.filter(a => new Date(a.createdAt) >= startDate);
+    
+    renderActivityChart(periodUpdates, days);
+    renderCategoryChart(periodUpdates);
+    renderTeamChart(periodUpdates);
+    renderActionStatusChart();
+    renderTopPeople(periodUpdates);
+    renderProductivityInsights(periodUpdates, periodActions, days);
+    renderTagsCloud();
+}
+
+function renderActivityChart(updates, days) {
+    const container = document.getElementById('activityChart');
+    
+    // Group by date
+    const dateMap = {};
+    const today = new Date();
+    
+    for (let i = days - 1; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        dateMap[dateStr] = 0;
+    }
+    
+    updates.forEach(u => {
+        if (dateMap.hasOwnProperty(u.date)) {
+            dateMap[u.date]++;
+        }
+    });
+    
+    const maxValue = Math.max(...Object.values(dateMap), 1);
+    const dates = Object.keys(dateMap);
+    
+    // Show fewer bars for longer periods
+    const step = days > 30 ? Math.ceil(days / 15) : 1;
+    const displayDates = dates.filter((_, i) => i % step === 0);
+    
+    container.innerHTML = displayDates.map(date => {
+        const value = dateMap[date];
+        const height = (value / maxValue) * 180;
+        const d = new Date(date);
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        return `
+            <div class="chart-bar">
+                <div class="chart-bar-fill" style="height: ${height}px;" data-value="${value}"></div>
+                <div class="chart-bar-label">${label}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderCategoryChart(updates) {
+    const container = document.getElementById('categoryChart');
+    
+    const categoryCount = {};
+    updates.forEach(u => {
+        categoryCount[u.category] = (categoryCount[u.category] || 0) + 1;
+    });
+    
+    const total = Object.values(categoryCount).reduce((a, b) => a + b, 0) || 1;
+    const colors = {
+        meeting: '#3B82F6',
+        discussion: '#6366F1',
+        review: '#10B981',
+        approval: '#F59E0B',
+        audit: '#EF4444',
+        planning: '#8B5CF6',
+        issue: '#EC4899',
+        other: '#6B7280'
+    };
+    
+    const maxValue = Math.max(...Object.values(categoryCount), 1);
+    
+    container.innerHTML = `
+        <div class="horizontal-chart">
+            ${Object.entries(categoryCount).sort((a, b) => b[1] - a[1]).map(([cat, count]) => `
+                <div class="horizontal-bar-row">
+                    <div class="horizontal-bar-label">${cat}</div>
+                    <div class="horizontal-bar-track">
+                        <div class="horizontal-bar-fill" style="width: ${(count / maxValue) * 100}%; background: ${colors[cat] || '#6B7280'}">
+                            ${count}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderTeamChart(updates) {
+    const container = document.getElementById('teamChart');
+    
+    const teamCount = {};
+    updates.forEach(u => {
+        if (u.teamId) {
+            const team = appData.teams.find(t => t.id === u.teamId);
+            if (team) {
+                teamCount[team.name] = {
+                    count: (teamCount[team.name]?.count || 0) + 1,
+                    color: team.color
+                };
+            }
+        }
+    });
+    
+    const maxValue = Math.max(...Object.values(teamCount).map(t => t.count), 1);
+    
+    if (Object.keys(teamCount).length === 0) {
+        container.innerHTML = '<p class="empty-state" style="padding: 40px;">No team data for this period</p>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="horizontal-chart">
+            ${Object.entries(teamCount).sort((a, b) => b[1].count - a[1].count).map(([name, data]) => `
+                <div class="horizontal-bar-row">
+                    <div class="horizontal-bar-label">${name}</div>
+                    <div class="horizontal-bar-track">
+                        <div class="horizontal-bar-fill" style="width: ${(data.count / maxValue) * 100}%; background: ${data.color}">
+                            ${data.count}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderActionStatusChart() {
+    const container = document.getElementById('actionStatusChart');
+    
+    const statusCount = {
+        pending: 0,
+        'in-progress': 0,
+        completed: 0,
+        blocked: 0
+    };
+    
+    appData.actions.forEach(a => {
+        statusCount[a.status] = (statusCount[a.status] || 0) + 1;
+    });
+    
+    const colors = {
+        pending: '#F59E0B',
+        'in-progress': '#3B82F6',
+        completed: '#10B981',
+        blocked: '#EF4444'
+    };
+    
+    const total = Object.values(statusCount).reduce((a, b) => a + b, 0) || 1;
+    
+    container.innerHTML = `
+        <div class="horizontal-chart">
+            ${Object.entries(statusCount).map(([status, count]) => `
+                <div class="horizontal-bar-row">
+                    <div class="horizontal-bar-label">${status.replace('-', ' ')}</div>
+                    <div class="horizontal-bar-track">
+                        <div class="horizontal-bar-fill" style="width: ${(count / total) * 100}%; background: ${colors[status]}">
+                            ${count}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        <div class="chart-legend">
+            ${Object.entries(statusCount).map(([status, count]) => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${colors[status]}"></div>
+                    <span>${status}: ${count}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderTopPeople(updates) {
+    const container = document.getElementById('topPeopleList');
+    
+    const peopleCount = {};
+    updates.forEach(u => {
+        if (u.people) {
+            u.people.split(',').forEach(person => {
+                const name = person.trim();
+                if (name) {
+                    peopleCount[name] = (peopleCount[name] || 0) + 1;
+                }
+            });
+        }
+    });
+    
+    const sorted = Object.entries(peopleCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+    
+    if (sorted.length === 0) {
+        container.innerHTML = '<p class="empty-state" style="padding: 20px;">No people data for this period</p>';
+        return;
+    }
+    
+    container.innerHTML = sorted.map(([name, count], index) => `
+        <div class="top-list-item">
+            <div class="top-list-rank">${index + 1}</div>
+            <div class="top-list-name">${name}</div>
+            <div class="top-list-count">${count} interactions</div>
+        </div>
+    `).join('');
+}
+
+function renderProductivityInsights(updates, actions, days) {
+    const container = document.getElementById('productivityInsights');
+    
+    const avgUpdatesPerDay = (updates.length / days).toFixed(1);
+    const completedActions = actions.filter(a => a.status === 'completed').length;
+    const completionRate = actions.length > 0 ? Math.round((completedActions / actions.length) * 100) : 0;
+    const meetingCount = updates.filter(u => u.category === 'meeting').length;
+    const reviewCount = updates.filter(u => u.category === 'review').length;
+    
+    // Calculate busiest day
+    const dayCount = {};
+    updates.forEach(u => {
+        const day = new Date(u.date).toLocaleDateString('en-US', { weekday: 'long' });
+        dayCount[day] = (dayCount[day] || 0) + 1;
+    });
+    const busiestDay = Object.entries(dayCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+    
+    container.innerHTML = `
+        <div class="insight-card">
+            <div class="insight-icon">📊</div>
+            <div class="insight-value">${avgUpdatesPerDay}</div>
+            <div class="insight-label">Avg Updates/Day</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">✅</div>
+            <div class="insight-value">${completionRate}%</div>
+            <div class="insight-label">Task Completion Rate</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">🤝</div>
+            <div class="insight-value">${meetingCount}</div>
+            <div class="insight-label">Meetings</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">👀</div>
+            <div class="insight-value">${reviewCount}</div>
+            <div class="insight-label">PR Reviews</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">📅</div>
+            <div class="insight-value">${busiestDay.slice(0, 3)}</div>
+            <div class="insight-label">Busiest Day</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">📝</div>
+            <div class="insight-value">${updates.length}</div>
+            <div class="insight-label">Total Updates</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">🎯</div>
+            <div class="insight-value">${actions.filter(a => a.priority === 'high').length}</div>
+            <div class="insight-label">High Priority Items</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">👥</div>
+            <div class="insight-value">${appData.teams.length}</div>
+            <div class="insight-label">Teams Managed</div>
+        </div>
+    `;
+}
+
+function renderTagsCloud() {
+    const container = document.getElementById('tagsCloud');
+    
+    const tagCount = {};
+    appData.updates.forEach(u => {
+        if (u.tags) {
+            u.tags.forEach(tag => {
+                tagCount[tag] = (tagCount[tag] || 0) + 1;
+            });
+        }
+    });
+    
+    if (Object.keys(tagCount).length === 0) {
+        container.innerHTML = '<p class="empty-state" style="padding: 20px;">No tags yet. Add tags to your updates to see them here!</p>';
+        return;
+    }
+    
+    const maxCount = Math.max(...Object.values(tagCount));
+    const sorted = Object.entries(tagCount).sort((a, b) => b[1] - a[1]);
+    
+    container.innerHTML = sorted.map(([tag, count]) => {
+        const size = Math.ceil((count / maxCount) * 5);
+        return `<span class="cloud-tag size-${size}" onclick="searchByTag('${tag}')">#${tag} (${count})</span>`;
+    }).join('');
+}
+
+// ==================== EMAIL REPORT ====================
+
+function copyReportToClipboard() {
+    const weekInput = document.getElementById('weekSelector').value;
+    const [year, week] = weekInput.split('-W');
+    
+    // Build plain text report
+    let report = `WEEKLY STATUS REPORT - Week ${week}, ${year}\n`;
+    report += `${'='.repeat(50)}\n\n`;
+    
+    // Stats
+    report += `SUMMARY\n`;
+    report += `-`.repeat(30) + '\n';
+    report += `• Updates Logged: ${document.getElementById('weeklyUpdatesCount').textContent}\n`;
+    report += `• Actions Completed: ${document.getElementById('weeklyActionsCompleted').textContent}\n`;
+    report += `• Meetings: ${document.getElementById('weeklyMeetings').textContent}\n`;
+    report += `• PR Reviews: ${document.getElementById('weeklyReviews').textContent}\n\n`;
+    
+    // What was done
+    report += `WHAT WAS DONE\n`;
+    report += `-`.repeat(30) + '\n';
+    const doneItems = document.querySelectorAll('#weeklyDoneList .report-item-title');
+    if (doneItems.length === 0) {
+        report += `• No items completed this week\n`;
+    } else {
+        doneItems.forEach(item => {
+            report += `• ${item.textContent}\n`;
+        });
+    }
+    report += '\n';
+    
+    // In Progress
+    report += `CURRENTLY WORKING ON\n`;
+    report += `-`.repeat(30) + '\n';
+    const inProgressItems = document.querySelectorAll('#weeklyInProgressList .report-item-title');
+    if (inProgressItems.length === 0) {
+        report += `• No items in progress\n`;
+    } else {
+        inProgressItems.forEach(item => {
+            report += `• ${item.textContent}\n`;
+        });
+    }
+    report += '\n';
+    
+    // Blockers
+    report += `BLOCKERS & ISSUES\n`;
+    report += `-`.repeat(30) + '\n';
+    const blockers = document.querySelectorAll('#weeklyBlockersList .report-item-title');
+    if (blockers.length === 0) {
+        report += `• No blockers reported\n`;
+    } else {
+        blockers.forEach(item => {
+            report += `• ${item.textContent}\n`;
+        });
+    }
+    report += '\n';
+    
+    // Next week
+    report += `NEXT WEEK'S FOCUS\n`;
+    report += `-`.repeat(30) + '\n';
+    const nextItems = document.querySelectorAll('#weeklyNextList .report-item-title');
+    if (nextItems.length === 0) {
+        report += `• No high priority items pending\n`;
+    } else {
+        nextItems.forEach(item => {
+            report += `• ${item.textContent}\n`;
+        });
+    }
+    
+    report += `\n${'='.repeat(50)}\n`;
+    report += `Generated: ${new Date().toLocaleString()}\n`;
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(report).then(() => {
+        alert('Report copied to clipboard! You can now paste it into your email.');
+    }).catch(err => {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = report;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('Report copied to clipboard! You can now paste it into your email.');
+    });
+}
