@@ -18,8 +18,9 @@ let fileSavePending = false;
 const DATA_API = '/api/data';
 
 // Initialize App
-document.addEventListener('DOMContentLoaded', async () => {
+    document.addEventListener('DOMContentLoaded', async () => {
     await loadData();
+    syncYourNameField();
     initializeApp();
     setupNavigation();
     updateDashboard();
@@ -113,10 +114,12 @@ function ensureDataShape() {
     if (!Array.isArray(appData.teams)) appData.teams = [];
     if (!Array.isArray(appData.tags)) appData.tags = [];
     if (!appData.settings || typeof appData.settings !== 'object') appData.settings = { darkMode: false };
+    if (!String(appData.settings.yourName || '').trim()) appData.settings.yourName = 'Kalpit';
     appData.updates.forEach(update => {
         if (!Array.isArray(update.tags)) update.tags = [];
         if (!update.description) update.description = '';
         if (!update.people) update.people = '';
+        update.people = replaceYourNameToken(update.people, 'Me', yourName());
         if (!update.targetDate) update.targetDate = '';
         if (!update.jira) update.jira = '';
         if (!['pending', 'in-progress', 'completed', 'blocked'].includes(update.status)) update.status = '';
@@ -124,7 +127,8 @@ function ensureDataShape() {
     appData.actions.forEach(action => {
         if (!action.priority) action.priority = 'medium';
         if (!action.status) action.status = 'pending';
-        if (!action.owner) action.owner = 'Me';
+        action.owner = ownerWithYourName(action.owner);
+        action.owner = replaceYourNameToken(action.owner, 'Me', yourName());
         if (!action.title) action.title = 'Untitled task';
         if (!action.jira) action.jira = '';
     });
@@ -133,6 +137,7 @@ function ensureDataShape() {
         if (!team.targetDate) team.targetDate = '';
         if (!team.jira) team.jira = '';
         if (!['pending', 'in-progress', 'completed', 'blocked'].includes(team.status)) team.status = '';
+        team.members = replaceYourNameToken(team.members, 'Me', yourName());
     });
 }
 
@@ -629,6 +634,56 @@ function splitOwnerNames(value) {
     return String(value || '').split(',').map(name => name.trim()).filter(Boolean);
 }
 
+function yourName() {
+    const name = appData.settings && String(appData.settings.yourName || '').trim();
+    return name || 'Kalpit';
+}
+
+function replaceYourNameToken(value, fromName, toName) {
+    const from = String(fromName || '').trim().toLowerCase();
+    const to = String(toName || '').trim();
+    if (!from || !to) return String(value || '');
+    const parts = splitOwnerNames(value);
+    if (!parts.some(part => part.toLowerCase() === from)) return String(value || '');
+    return parts.map(part => part.toLowerCase() === from ? to : part).join(', ');
+}
+
+function ownerWithYourName(value) {
+    return splitOwnerNames(value).length ? String(value).trim() : yourName();
+}
+
+function syncYourNameField() {
+    const input = document.getElementById('yourName');
+    if (input) input.value = yourName();
+}
+
+function saveYourName() {
+    const input = document.getElementById('yourName');
+    if (!input) return;
+    const next = input.value.trim() || 'Kalpit';
+    const previous = yourName();
+    input.value = next;
+    if (!appData.settings || typeof appData.settings !== 'object') appData.settings = {};
+    appData.settings.yourName = next;
+    if (previous.toLowerCase() !== next.toLowerCase()) {
+        appData.actions.forEach(action => {
+            action.owner = replaceYourNameToken(action.owner, previous, next);
+        });
+        appData.updates.forEach(update => {
+            update.people = replaceYourNameToken(update.people, previous, next);
+        });
+        appData.teams.forEach(team => {
+            team.members = replaceYourNameToken(team.members, previous, next);
+        });
+    }
+    ensureDataShape();
+    saveData();
+    renderTeams();
+    renderUpdates();
+    filterActions();
+    updateDashboard();
+}
+
 // ==================== UPDATES ====================
 
 function openAddUpdateModal() {
@@ -909,6 +964,7 @@ function clearFilters() {
 
 function openAddActionModal() {
     document.getElementById('addActionForm').reset();
+    document.getElementById('actionOwner').value = yourName();
     openModal('addActionModal');
 }
 

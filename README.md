@@ -341,7 +341,7 @@ A date and a dashed line are enough. Add the words after `|` when you have them:
 | `Notes:` | Extra detail for a task |
 | `Repeats:` | Daily, Weekly, Biweekly, or Monthly |
 
-`17 Nov` is enough for the date. The app uses the current year. A task with no `Who:` is saved under your name, Me. A new team picks up `About:` and `Color:`. Leave `Color:` out and the app picks one. A team already in the app keeps the about text and color it already has. Open **Teams** to see that color.
+`17 Nov` is enough for the date. The app uses the current year. A task with no `Who:` is saved under your name. That name is at the top of the sidebar and starts as Kalpit. The word `Me` means the same name. A new team picks up `About:` and `Color:`. Leave `Color:` out and the app picks one. A team already in the app keeps the about text and color it already has. Open **Teams** to see that color.
 
 The teams already in the app use these colors:
 

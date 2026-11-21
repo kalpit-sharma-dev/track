@@ -325,6 +325,35 @@ html {
     position: relative;
 }
 
+.your-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    position: relative;
+    z-index: 1;
+}
+
+.your-name span {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.92;
+    white-space: nowrap;
+}
+
+.your-name input {
+    width: 100%;
+    min-width: 0;
+    border: none;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--heading);
+    background: rgba(255, 255, 255, 0.92);
+}
+
 .theme-toggle {
     position: relative;
     z-index: 1;
