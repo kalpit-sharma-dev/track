@@ -436,11 +436,11 @@ function showView(viewName) {
     }
     
     if (viewName === 'daily') {
-        renderUpdates();
+        filterUpdates();
     }
     
     if (viewName === 'actions') {
-        renderActions();
+        filterActions();
     }
 }
 
@@ -459,19 +459,20 @@ function setDefaultDates() {
 
 // Set current week in week selector
 function setCurrentWeek() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const week = getWeekNumber(now);
-    document.getElementById('weekSelector').value = `${year}-W${week.toString().padStart(2, '0')}`;
+    const iso = getISOWeek(new Date());
+    document.getElementById('weekSelector').value = `${iso.year}-W${String(iso.week).padStart(2, '0')}`;
 }
 
-// Get week number
-function getWeekNumber(date) {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+function getISOWeek(date) {
+    const thursday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const day = thursday.getDay() || 7;
+    thursday.setDate(thursday.getDate() + 4 - day);
+    const weekYear = thursday.getFullYear();
+    const yearStart = new Date(weekYear, 0, 4);
+    const yearStartDay = yearStart.getDay() || 7;
+    const week1Monday = new Date(weekYear, 0, 4 - yearStartDay + 1);
+    const week = 1 + Math.round((thursday - week1Monday) / 604800000);
+    return { year: weekYear, week };
 }
 
 // Format date
@@ -549,7 +550,7 @@ function saveUpdate(event) {
     
     appData.updates.unshift(update);
     saveData();
-    renderUpdates();
+    filterUpdates();
     updateDashboard();
     populateTagSuggestions();
     closeModal('addUpdateModal');
@@ -632,7 +633,7 @@ function renderUpdates(filteredUpdates = null) {
                             <span class="update-category category-${update.category}">
                                 ${categoryIcons[update.category] || '📌'} ${update.category}
                             </span>
-                            ${team ? `<span class="update-team" style="background: ${team.color}15; color: ${team.color}; border: 1px solid ${team.color}30;">${team.name}</span>` : ''}
+                            ${team ? `<span class="update-team" style="background: ${team.color}15; color: ${team.color}; border: 1px solid ${team.color}30;">${escapeHtml(team.name)}</span>` : ''}
                         </div>
                         <div class="update-actions">
                             <button class="btn btn-small btn-primary" onclick="event.stopPropagation(); openEditUpdateModal('${update.id}')" title="Edit this update">
@@ -664,7 +665,7 @@ function deleteUpdate(id) {
     if (confirm('Are you sure you want to delete this update?')) {
         appData.updates = appData.updates.filter(u => u.id !== id);
         saveData();
-        renderUpdates();
+        filterUpdates();
         updateDashboard();
     }
 }
@@ -716,7 +717,7 @@ function updateUpdate(event) {
     });
     
     saveData();
-    renderUpdates();
+    filterUpdates();
     updateDashboard();
     populateTagSuggestions();
     closeModal('editUpdateModal');
@@ -727,7 +728,7 @@ function deleteUpdateFromModal() {
     if (confirm('Are you sure you want to delete this update?')) {
         appData.updates = appData.updates.filter(u => u.id !== id);
         saveData();
-        renderUpdates();
+        filterUpdates();
         updateDashboard();
         closeModal('editUpdateModal');
     }
@@ -804,7 +805,7 @@ function saveAction(event) {
     
     appData.actions.push(action);
     saveData();
-    renderActions();
+    filterActions();
     updateDashboard();
     populateTeamDropdowns();
     closeModal('addActionModal');
@@ -867,7 +868,7 @@ function createRecurringAction(originalAction) {
     appData.actions.push(newAction);
     originalAction.lastRecurringCreated = new Date().toISOString();
     saveData();
-    renderActions();
+    filterActions();
 }
 
 function calculateNextDueDate(recurring) {
@@ -1012,7 +1013,7 @@ function updateAction(event) {
     }
     
     saveData();
-    renderActions();
+    filterActions();
     updateDashboard();
     populateTeamDropdowns();
     closeModal('editActionModal');
@@ -1023,7 +1024,7 @@ function deleteAction() {
     if (confirm('Are you sure you want to delete this action item?')) {
         appData.actions = appData.actions.filter(a => a.id !== id);
         saveData();
-        renderActions();
+        filterActions();
         updateDashboard();
         closeModal('editActionModal');
     }
@@ -1128,8 +1129,8 @@ function renderTeams() {
         return `
             <div class="team-card">
                 <div class="team-header" style="background: ${team.color}">
-                    <h3>${team.name}</h3>
-                    <p>${team.description || 'No description'}</p>
+                    <h3>${escapeHtml(team.name)}</h3>
+                    <p>${escapeHtml(team.description || 'No description')}</p>
                 </div>
                 <div class="team-body">
                     <div class="team-stats">
@@ -1143,7 +1144,7 @@ function renderTeams() {
                         </div>
                     </div>
                     <div class="team-members">
-                        <strong>Members:</strong> <span>${team.members || 'Not specified'}</span>
+                        <strong>Members:</strong> <span>${escapeHtml(team.members || 'Not specified')}</span>
                     </div>
                     <div class="team-actions">
                         <button class="btn btn-small btn-primary" onclick="openEditTeamModal('${team.id}')">✏️ Edit</button>
@@ -1214,6 +1215,7 @@ function deleteTeamFromModal() {
 function updateDashboard() {
     const today = localDateString();
     const weekStart = getWeekStart(new Date());
+    const weekEnd = endOfDay(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6));
     
     // Today's updates
     const todayUpdates = appData.updates.filter(u => u.date === today).length;
@@ -1226,7 +1228,8 @@ function updateDashboard() {
     // Completed this week
     const completedThisWeek = appData.actions.filter(a => {
         if (!a.completedAt) return false;
-        return new Date(a.completedAt) >= weekStart;
+        const completed = new Date(a.completedAt);
+        return completed >= weekStart && completed <= weekEnd;
     }).length;
     document.getElementById('completedActions').textContent = completedThisWeek;
     
@@ -1244,15 +1247,19 @@ function updateDashboard() {
 }
 
 function getWeekStart(date) {
-    const d = new Date(date);
+    const d = startOfDay(date);
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff));
+    d.setDate(diff);
+    return d;
 }
 
 function renderRecentUpdates() {
     const container = document.getElementById('recentUpdatesList');
-    const recent = appData.updates.slice(0, 5);
+    const recent = appData.updates
+        .slice()
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+        .slice(0, 5);
     
     if (recent.length === 0) {
         container.innerHTML = '<p class="empty-state">No updates yet. Add your first daily update!</p>';
@@ -1263,7 +1270,7 @@ function renderRecentUpdates() {
         <div class="recent-update-item" style="cursor: pointer" onclick="showView('daily'); setTimeout(() => openEditUpdateModal('${update.id}'), 100)">
             <div class="recent-update-date">${formatDate(update.date, 'short')}</div>
             <div class="recent-update-content">
-                <div class="recent-update-title">${update.description.substring(0, 60)}${update.description.length > 60 ? '...' : ''}</div>
+                <div class="recent-update-title">${escapeHtml(update.description.substring(0, 60))}${update.description.length > 60 ? '...' : ''}</div>
                 <div class="recent-update-category">${update.category}</div>
             </div>
         </div>
@@ -1289,8 +1296,8 @@ function renderPendingActionsList() {
         <div class="recent-update-item" style="cursor: pointer" onclick="showView('actions'); openEditActionModal('${action.id}')">
             <div class="recent-update-date" style="color: ${action.priority === 'high' ? 'var(--danger)' : 'var(--text-muted)'}">${action.priority.toUpperCase()}</div>
             <div class="recent-update-content">
-                <div class="recent-update-title">${action.title}</div>
-                <div class="recent-update-category">👤 ${action.owner}</div>
+                <div class="recent-update-title">${escapeHtml(action.title)}</div>
+                <div class="recent-update-category">👤 ${escapeHtml(action.owner)}</div>
             </div>
         </div>
     `).join('');
@@ -1312,7 +1319,7 @@ function renderTeamSummary() {
             <div class="team-summary-item" style="cursor: pointer" onclick="showView('teams'); setTimeout(() => openEditTeamModal('${team.id}'), 100)">
                 <div class="team-summary-name">
                     <span class="team-color-dot" style="background: ${team.color}"></span>
-                    <strong>${team.name}</strong>
+                    <strong>${escapeHtml(team.name)}</strong>
                 </div>
                 <div class="team-summary-stats">
                     <span><strong>${updates}</strong> update${updates !== 1 ? 's' : ''}</span>
@@ -1330,14 +1337,13 @@ function generateWeeklyReport() {
     if (!weekInput) return;
     
     const [year, week] = weekInput.split('-W');
-    const weekStart = getDateOfWeek(parseInt(week), parseInt(year));
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekStart = getDateOfISOWeek(parseInt(week, 10), parseInt(year, 10));
+    const weekEnd = endOfDay(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6));
     
     // Filter data for the week
     const weekUpdates = appData.updates.filter(u => {
-        const d = new Date(u.date);
-        return d >= weekStart && d <= weekEnd;
+        const d = parseLocalDate(u.date);
+        return d && d >= weekStart && d <= weekEnd;
     });
     
     const weekActionsCompleted = appData.actions.filter(a => {
@@ -1370,7 +1376,7 @@ function generateWeeklyReport() {
             <div class="report-item">
                 <div class="report-item-icon" style="background: var(--success); color: white;">✓</div>
                 <div class="report-item-content">
-                    <div class="report-item-title">${item.description}</div>
+                    <div class="report-item-title">${escapeHtml(item.description)}</div>
                     <div class="report-item-meta">${formatDate(item.date, 'short')} • ${item.category}</div>
                 </div>
             </div>
@@ -1388,8 +1394,8 @@ function generateWeeklyReport() {
             <div class="report-item">
                 <div class="report-item-icon" style="background: var(--info); color: white;">⟳</div>
                 <div class="report-item-content">
-                    <div class="report-item-title">${item.title}</div>
-                    <div class="report-item-meta">Owner: ${item.owner}${item.dueDate ? ` • Due: ${formatDate(item.dueDate, 'short')}` : ''}</div>
+                    <div class="report-item-title">${escapeHtml(item.title)}</div>
+                    <div class="report-item-meta">Owner: ${escapeHtml(item.owner)}${item.dueDate ? ` • Due: ${formatDate(item.dueDate, 'short')}` : ''}</div>
                 </div>
             </div>
         `).join('');
@@ -1406,8 +1412,8 @@ function generateWeeklyReport() {
             <div class="report-item">
                 <div class="report-item-icon" style="background: var(--danger); color: white;">!</div>
                 <div class="report-item-content">
-                    <div class="report-item-title">${item.title}</div>
-                    <div class="report-item-meta">Owner: ${item.owner}</div>
+                    <div class="report-item-title">${escapeHtml(item.title)}</div>
+                    <div class="report-item-meta">Owner: ${escapeHtml(item.owner)}</div>
                 </div>
             </div>
         `).join('');
@@ -1426,23 +1432,20 @@ function generateWeeklyReport() {
             <div class="report-item">
                 <div class="report-item-icon" style="background: var(--warning); color: white;">→</div>
                 <div class="report-item-content">
-                    <div class="report-item-title">${item.title}</div>
-                    <div class="report-item-meta">Owner: ${item.owner}</div>
+                    <div class="report-item-title">${escapeHtml(item.title)}</div>
+                    <div class="report-item-meta">Owner: ${escapeHtml(item.owner)}</div>
                 </div>
             </div>
         `).join('');
     }
 }
 
-function getDateOfWeek(week, year) {
-    const simple = new Date(year, 0, 1 + (week - 1) * 7);
-    const dow = simple.getDay();
-    const weekStart = simple;
-    if (dow <= 4)
-        weekStart.setDate(simple.getDate() - simple.getDay() + 1);
-    else
-        weekStart.setDate(simple.getDate() + 8 - simple.getDay());
-    return weekStart;
+function getDateOfISOWeek(week, year) {
+    const jan4 = new Date(year, 0, 4);
+    const day = jan4.getDay() || 7;
+    const monday = new Date(year, 0, 4 - day + 1 + (week - 1) * 7);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
 }
 
 function exportWeeklyReport() {
