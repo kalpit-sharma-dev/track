@@ -391,6 +391,8 @@ Double-clicking `index.html` by itself does not create that file. The notes stay
 
 **Restore Backup** replaces everything from a JSON file you choose. Use it when you are putting a saved copy back.
 
+**Delete a period** removes the notes and tasks for one day, week, month, or year. Teams stay. **Reset everything** removes every note, task, and team. Both ask you to type `confirm` before anything is deleted. Download a backup first if you still need the data.
+
 ---
 
 ## Features in Detail

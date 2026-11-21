@@ -371,6 +371,20 @@ html {
     font-size: 0.8rem;
 }
 
+.delete-summary {
+    background: #FEF2F2;
+    color: #991B1B;
+    border-radius: 12px;
+    padding: 12px 14px;
+    line-height: 1.45;
+    margin: 0 0 18px;
+}
+
+[data-theme="dark"] .delete-summary {
+    background: #3F1D1D;
+    color: #FECACA;
+}
+
 .import-result {
     padding: 24px 28px 28px;
     display: flex;
@@ -595,6 +609,14 @@ html {
 .btn-danger:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35);
+}
+
+.btn:disabled,
+.btn:disabled:hover {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 .btn-small {

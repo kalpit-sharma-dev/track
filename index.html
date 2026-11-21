@@ -81,6 +81,12 @@
                     <span>📂</span> Restore Backup
                 </button>
                 <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+                <button class="btn btn-danger" onclick="openDeletePeriodModal()" title="Delete notes and tasks for one day, week, month, or year">
+                    <span>🗑️</span> Delete a period
+                </button>
+                <button class="btn btn-danger" onclick="openResetDataModal()" title="Delete every note, task, and team">
+                    <span>⚠️</span> Reset everything
+                </button>
             </div>
         </nav>
 
@@ -842,6 +848,53 @@
                     <button type="button" class="btn btn-danger" onclick="deleteAction()">Delete</button>
                     <button type="button" class="btn btn-secondary" onclick="closeModal('editActionModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="deleteDataModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="deleteDataTitle">Delete a period</h3>
+                <button class="close-btn" type="button" onclick="closeModal('deleteDataModal')">&times;</button>
+            </div>
+            <form id="deleteDataForm" onsubmit="approveDataDelete(event)">
+                <div id="deletePeriodFields">
+                    <div class="form-group">
+                        <label for="deleteRangeKind">Delete data for</label>
+                        <select id="deleteRangeKind" onchange="syncDeleteRangeFields()">
+                            <option value="day">A day</option>
+                            <option value="week">A week</option>
+                            <option value="month">A month</option>
+                            <option value="year">A year</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="deleteDayField">
+                        <label for="deleteDay">Day</label>
+                        <input type="date" id="deleteDay" oninput="previewDataDelete()">
+                    </div>
+                    <div class="form-group" id="deleteWeekField" hidden>
+                        <label for="deleteWeek">Week</label>
+                        <input type="week" id="deleteWeek" oninput="previewDataDelete()">
+                    </div>
+                    <div class="form-group" id="deleteMonthField" hidden>
+                        <label for="deleteMonth">Month</label>
+                        <input type="month" id="deleteMonth" oninput="previewDataDelete()">
+                    </div>
+                    <div class="form-group" id="deleteYearField" hidden>
+                        <label for="deleteYear">Year</label>
+                        <input type="number" id="deleteYear" min="2000" max="2100" oninput="previewDataDelete()">
+                    </div>
+                </div>
+                <p id="deleteDataSummary" class="delete-summary"></p>
+                <div class="form-group">
+                    <label for="deleteConfirmText">Type confirm to approve</label>
+                    <input type="text" id="deleteConfirmText" autocomplete="off" spellcheck="false" placeholder="confirm" oninput="syncDeleteApproval()">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('deleteDataModal')">Cancel</button>
+                    <button type="submit" class="btn btn-danger" id="deleteDataApprove" disabled>Delete</button>
                 </div>
             </form>
         </div>

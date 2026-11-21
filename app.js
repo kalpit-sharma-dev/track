@@ -2194,6 +2194,176 @@ document.querySelectorAll('.modal').forEach(modal => {
     });
 });
 
+// ==================== DELETE DATA ====================
+
+let deleteDataMode = 'period';
+
+function dateInRange(value, range) {
+    if (!value || !range) return false;
+    const date = parseLocalDate(value);
+    if (!date || Number.isNaN(date.getTime())) return false;
+    return date >= range.start && date <= range.end;
+}
+
+function actionInRange(action, range) {
+    if (dateInRange(action.dueDate, range)) return true;
+    if (dateInRange(action.completedAt, range)) return true;
+    if (!action.dueDate && dateInRange(action.createdAt, range)) return true;
+    return false;
+}
+
+function deleteRange() {
+    const kind = document.getElementById('deleteRangeKind').value;
+    if (kind === 'day') {
+        const value = document.getElementById('deleteDay').value;
+        const day = parseLocalDate(value);
+        if (!day || Number.isNaN(day.getTime())) return null;
+        const start = startOfDay(day);
+        return { start, end: endOfDay(start), label: formatDate(value) };
+    }
+    if (kind === 'week') {
+        const value = document.getElementById('deleteWeek').value || '';
+        if (!value.includes('-W')) return null;
+        const [yearText, weekText] = value.split('-W');
+        const start = getDateOfISOWeek(parseInt(weekText, 10), parseInt(yearText, 10));
+        const end = endOfDay(new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6));
+        return { start, end, label: `Week ${Number(weekText)}, ${yearText} (${formatWeekRange(start, end)})` };
+    }
+    if (kind === 'month') {
+        const value = document.getElementById('deleteMonth').value || '';
+        const match = /^(\d{4})-(\d{2})$/.exec(value);
+        if (!match) return null;
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        if (month < 1 || month > 12) return null;
+        const start = new Date(year, month - 1, 1);
+        const end = endOfDay(new Date(year, month, 0));
+        return { start, end, label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) };
+    }
+    if (kind === 'year') {
+        const year = Number(document.getElementById('deleteYear').value);
+        if (!year || year < 2000 || year > 2100) return null;
+        const start = new Date(year, 0, 1);
+        const end = endOfDay(new Date(year, 11, 31));
+        return { start, end, label: String(year) };
+    }
+    return null;
+}
+
+function recordsInDeleteRange(range) {
+    const notes = appData.updates.filter(update => dateInRange(update.date, range));
+    const tasks = appData.actions.filter(action => actionInRange(action, range));
+    return { notes, tasks };
+}
+
+function deleteConfirmReady() {
+    return document.getElementById('deleteConfirmText').value.trim().toLowerCase() === 'confirm';
+}
+
+function syncDeleteRangeFields() {
+    const kind = document.getElementById('deleteRangeKind').value;
+    document.getElementById('deleteDayField').hidden = kind !== 'day';
+    document.getElementById('deleteWeekField').hidden = kind !== 'week';
+    document.getElementById('deleteMonthField').hidden = kind !== 'month';
+    document.getElementById('deleteYearField').hidden = kind !== 'year';
+    previewDataDelete();
+}
+
+function previewDataDelete() {
+    const summary = document.getElementById('deleteDataSummary');
+    document.getElementById('deleteConfirmText').value = '';
+    if (deleteDataMode === 'reset') {
+        const notes = appData.updates.length;
+        const tasks = appData.actions.length;
+        const teams = appData.teams.length;
+        summary.textContent = notes || tasks || teams
+            ? `This deletes ${countWord(notes, 'note', 'notes')}, ${countWord(tasks, 'task', 'tasks')}, and ${countWord(teams, 'team', 'teams')}. Download a backup first if you still need any of it.`
+            : 'There is nothing to delete.';
+    } else {
+        const range = deleteRange();
+        if (!range) {
+            const kind = document.getElementById('deleteRangeKind').value;
+            summary.textContent = `Choose a ${kind}.`;
+        } else {
+            const { notes, tasks } = recordsInDeleteRange(range);
+            summary.textContent = notes.length || tasks.length
+                ? `${range.label}. This deletes ${countWord(notes.length, 'note', 'notes')} and ${countWord(tasks.length, 'task', 'tasks')} from that ${document.getElementById('deleteRangeKind').value}. Teams stay.`
+                : `${range.label}. Nothing from this ${document.getElementById('deleteRangeKind').value} will be deleted.`;
+        }
+    }
+    syncDeleteApproval();
+}
+
+function syncDeleteApproval() {
+    const button = document.getElementById('deleteDataApprove');
+    const hasSomething = deleteDataMode === 'reset'
+        ? appData.updates.length + appData.actions.length + appData.teams.length > 0
+        : (() => {
+            const range = deleteRange();
+            if (!range) return false;
+            const found = recordsInDeleteRange(range);
+            return found.notes.length + found.tasks.length > 0;
+        })();
+    button.disabled = !(deleteConfirmReady() && hasSomething);
+    button.textContent = deleteDataMode === 'reset' ? 'Reset everything' : 'Delete';
+}
+
+function openDeletePeriodModal() {
+    deleteDataMode = 'period';
+    document.getElementById('deleteDataTitle').textContent = 'Delete a period';
+    document.getElementById('deletePeriodFields').hidden = false;
+    document.getElementById('deleteRangeKind').value = 'day';
+    const now = new Date();
+    document.getElementById('deleteDay').value = localDateString(now);
+    const iso = getISOWeek(now);
+    document.getElementById('deleteWeek').value = `${iso.year}-W${String(iso.week).padStart(2, '0')}`;
+    document.getElementById('deleteMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    document.getElementById('deleteYear').value = now.getFullYear();
+    syncDeleteRangeFields();
+    openModal('deleteDataModal');
+}
+
+function openResetDataModal() {
+    deleteDataMode = 'reset';
+    document.getElementById('deleteDataTitle').textContent = 'Reset everything';
+    document.getElementById('deletePeriodFields').hidden = true;
+    previewDataDelete();
+    openModal('deleteDataModal');
+}
+
+function refreshAfterDelete() {
+    saveData();
+    filterUpdates();
+    filterActions();
+    renderTeams();
+    updateDashboard();
+    populateTagSuggestions();
+    if (lastSearchQuery) scheduleSearch();
+}
+
+function approveDataDelete(event) {
+    event.preventDefault();
+    if (!deleteConfirmReady()) return;
+    if (deleteDataMode === 'reset') {
+        if (!appData.updates.length && !appData.actions.length && !appData.teams.length) return;
+        appData.updates = [];
+        appData.actions = [];
+        appData.teams = [];
+        appData.tags = [];
+    } else {
+        const range = deleteRange();
+        if (!range) return;
+        const { notes, tasks } = recordsInDeleteRange(range);
+        if (!notes.length && !tasks.length) return;
+        const noteIds = new Set(notes.map(note => note.id));
+        const taskIds = new Set(tasks.map(task => task.id));
+        appData.updates = appData.updates.filter(note => !noteIds.has(note.id));
+        appData.actions = appData.actions.filter(task => !taskIds.has(task.id));
+    }
+    refreshAfterDelete();
+    closeModal('deleteDataModal');
+}
+
 // ==================== EXPORT/IMPORT ====================
 
 function exportData() {
