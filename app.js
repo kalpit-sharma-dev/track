@@ -535,6 +535,9 @@ function renderUpdates(filteredUpdates = null) {
                             ${team ? `<span class="update-team" style="background: ${team.color}15; color: ${team.color}; border: 1px solid ${team.color}30;">${team.name}</span>` : ''}
                         </div>
                         <div class="update-actions">
+                            <button class="btn btn-small btn-primary" onclick="event.stopPropagation(); openEditUpdateModal('${update.id}')" title="Edit this update">
+                                ✏️
+                            </button>
                             <button class="btn btn-small btn-secondary" onclick="event.stopPropagation(); deleteUpdate('${update.id}')" title="Delete this update">
                                 🗑️
                             </button>
@@ -559,6 +562,70 @@ function deleteUpdate(id) {
         saveData();
         renderUpdates();
         updateDashboard();
+    }
+}
+
+function openEditUpdateModal(id) {
+    const update = appData.updates.find(u => u.id === id);
+    if (!update) return;
+    
+    document.getElementById('editUpdateId').value = update.id;
+    document.getElementById('editUpdateDate').value = update.date;
+    document.getElementById('editUpdateCategory').value = update.category;
+    document.getElementById('editUpdateDescription').value = update.description;
+    document.getElementById('editUpdatePeople').value = update.people || '';
+    document.getElementById('editUpdateTags').value = update.tags ? update.tags.join(', ') : '';
+    
+    // Populate team dropdown
+    const teamDropdown = document.getElementById('editUpdateTeam');
+    teamDropdown.innerHTML = '<option value="">Select Team</option>';
+    appData.teams.forEach(team => {
+        teamDropdown.innerHTML += `<option value="${team.id}">${team.name}</option>`;
+    });
+    teamDropdown.value = update.teamId || '';
+    
+    openModal('editUpdateModal');
+}
+
+function updateUpdate(event) {
+    event.preventDefault();
+    
+    const id = document.getElementById('editUpdateId').value;
+    const update = appData.updates.find(u => u.id === id);
+    if (!update) return;
+    
+    const tagsInput = document.getElementById('editUpdateTags').value;
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t) : [];
+    
+    update.date = document.getElementById('editUpdateDate').value;
+    update.category = document.getElementById('editUpdateCategory').value;
+    update.teamId = document.getElementById('editUpdateTeam').value;
+    update.description = document.getElementById('editUpdateDescription').value;
+    update.people = document.getElementById('editUpdatePeople').value;
+    update.tags = tags;
+    
+    // Add new tags to global tags list
+    tags.forEach(tag => {
+        if (!appData.tags.includes(tag)) {
+            appData.tags.push(tag);
+        }
+    });
+    
+    saveData();
+    renderUpdates();
+    updateDashboard();
+    populateTagSuggestions();
+    closeModal('editUpdateModal');
+}
+
+function deleteUpdateFromModal() {
+    const id = document.getElementById('editUpdateId').value;
+    if (confirm('Are you sure you want to delete this update?')) {
+        appData.updates = appData.updates.filter(u => u.id !== id);
+        saveData();
+        renderUpdates();
+        updateDashboard();
+        closeModal('editUpdateModal');
     }
 }
 
@@ -789,6 +856,16 @@ function openEditActionModal(id) {
     document.getElementById('editActionPriority').value = action.priority;
     document.getElementById('editActionDueDate').value = action.dueDate || '';
     document.getElementById('editActionNotes').value = action.notes || '';
+    document.getElementById('editActionJira').value = action.jira || '';
+    document.getElementById('editActionRecurring').value = action.recurring || '';
+    
+    // Populate team dropdown
+    const teamDropdown = document.getElementById('editActionTeam');
+    teamDropdown.innerHTML = '<option value="">Select Team</option>';
+    appData.teams.forEach(team => {
+        teamDropdown.innerHTML += `<option value="${team.id}">${team.name}</option>`;
+    });
+    teamDropdown.value = action.teamId || '';
     
     openModal('editActionModal');
 }
@@ -809,6 +886,9 @@ function updateAction(event) {
     action.priority = document.getElementById('editActionPriority').value;
     action.dueDate = document.getElementById('editActionDueDate').value;
     action.notes = document.getElementById('editActionNotes').value;
+    action.teamId = document.getElementById('editActionTeam').value;
+    action.jira = document.getElementById('editActionJira').value;
+    action.recurring = document.getElementById('editActionRecurring').value;
     
     if (wasNotCompleted && action.status === 'completed') {
         action.completedAt = new Date().toISOString();
@@ -817,6 +897,7 @@ function updateAction(event) {
     saveData();
     renderActions();
     updateDashboard();
+    populateTeamDropdowns();
     closeModal('editActionModal');
 }
 
@@ -948,7 +1029,8 @@ function renderTeams() {
                         <strong>Members:</strong> <span>${team.members || 'Not specified'}</span>
                     </div>
                     <div class="team-actions">
-                        <button class="btn btn-small btn-secondary" onclick="deleteTeam('${team.id}')">Delete</button>
+                        <button class="btn btn-small btn-primary" onclick="openEditTeamModal('${team.id}')">✏️ Edit</button>
+                        <button class="btn btn-small btn-secondary" onclick="deleteTeam('${team.id}')">🗑️ Delete</button>
                     </div>
                 </div>
             </div>
@@ -957,12 +1039,56 @@ function renderTeams() {
 }
 
 function deleteTeam(id) {
-    if (confirm('Are you sure you want to delete this team?')) {
+    if (confirm('Are you sure you want to delete this team? This will not delete updates or actions associated with this team.')) {
         appData.teams = appData.teams.filter(t => t.id !== id);
         saveData();
         renderTeams();
         populateTeamDropdowns();
         updateDashboard();
+    }
+}
+
+function openEditTeamModal(id) {
+    const team = appData.teams.find(t => t.id === id);
+    if (!team) return;
+    
+    document.getElementById('editTeamId').value = team.id;
+    document.getElementById('editTeamName').value = team.name;
+    document.getElementById('editTeamDescription').value = team.description || '';
+    document.getElementById('editTeamMembers').value = team.members || '';
+    document.getElementById('editTeamColor').value = team.color || '#4F46E5';
+    
+    openModal('editTeamModal');
+}
+
+function updateTeam(event) {
+    event.preventDefault();
+    
+    const id = document.getElementById('editTeamId').value;
+    const team = appData.teams.find(t => t.id === id);
+    if (!team) return;
+    
+    team.name = document.getElementById('editTeamName').value;
+    team.description = document.getElementById('editTeamDescription').value;
+    team.members = document.getElementById('editTeamMembers').value;
+    team.color = document.getElementById('editTeamColor').value;
+    
+    saveData();
+    renderTeams();
+    populateTeamDropdowns();
+    updateDashboard();
+    closeModal('editTeamModal');
+}
+
+function deleteTeamFromModal() {
+    const id = document.getElementById('editTeamId').value;
+    if (confirm('Are you sure you want to delete this team? This will not delete updates or actions associated with this team.')) {
+        appData.teams = appData.teams.filter(t => t.id !== id);
+        saveData();
+        renderTeams();
+        populateTeamDropdowns();
+        updateDashboard();
+        closeModal('editTeamModal');
     }
 }
 

@@ -558,6 +558,93 @@
         </div>
     </div>
 
+    <!-- Edit Update Modal -->
+    <div id="editUpdateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Update</h3>
+                <button class="close-btn" onclick="closeModal('editUpdateModal')">&times;</button>
+            </div>
+            <form id="editUpdateForm" onsubmit="updateUpdate(event)">
+                <input type="hidden" id="editUpdateId">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="editUpdateDate" required>
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="editUpdateCategory" required>
+                        <option value="meeting">Meeting</option>
+                        <option value="discussion">Discussion</option>
+                        <option value="review">PR Review</option>
+                        <option value="approval">Approval</option>
+                        <option value="audit">Audit</option>
+                        <option value="planning">Planning</option>
+                        <option value="issue">Issue Resolution</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Team (Optional)</label>
+                    <select id="editUpdateTeam">
+                        <option value="">Select Team</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="editUpdateDescription" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>People Involved (comma separated)</label>
+                    <input type="text" id="editUpdatePeople" placeholder="e.g., Rajesh, Sunita, Chandan">
+                </div>
+                <div class="form-group">
+                    <label>Tags (comma separated)</label>
+                    <input type="text" id="editUpdateTags" placeholder="e.g., urgent, follow-up, blocked">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" onclick="deleteUpdateFromModal()">Delete</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('editUpdateModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Team Modal -->
+    <div id="editTeamModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Team</h3>
+                <button class="close-btn" onclick="closeModal('editTeamModal')">&times;</button>
+            </div>
+            <form id="editTeamForm" onsubmit="updateTeam(event)">
+                <input type="hidden" id="editTeamId">
+                <div class="form-group">
+                    <label>Team Name</label>
+                    <input type="text" id="editTeamName" required placeholder="e.g., Performance Pod">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="editTeamDescription" rows="2" placeholder="Team focus area..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Team Members (comma separated)</label>
+                    <input type="text" id="editTeamMembers" placeholder="e.g., Rajesh, Sunita, Chandan">
+                </div>
+                <div class="form-group">
+                    <label>Color</label>
+                    <input type="color" id="editTeamColor" value="#4F46E5">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" onclick="deleteTeamFromModal()">Delete</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('editTeamModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Edit Action Modal -->
     <div id="editActionModal" class="modal">
         <div class="modal-content">
@@ -603,6 +690,28 @@
                         <label>Due Date</label>
                         <input type="date" id="editActionDueDate">
                     </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Team</label>
+                        <select id="editActionTeam">
+                            <option value="">Select Team</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Recurring</label>
+                        <select id="editActionRecurring">
+                            <option value="">Not recurring</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Related JIRA/Ticket</label>
+                    <input type="text" id="editActionJira" placeholder="e.g., RITM8019234">
                 </div>
                 <div class="form-group">
                     <label>Notes</label>
