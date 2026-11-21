@@ -27,6 +27,7 @@ assert.strictEqual(parsed.teams[0].members, 'Murthy, Rajesh');
 assert.strictEqual(parsed.teams[0].color, '#EF4444');
 assert.strictEqual(parsed.teams[0].targetDate, '2026-11-30');
 assert.strictEqual(parsed.teams[0].jira, 'PERF-120');
+assert.strictEqual(parsed.teams[0].status, 'in-progress');
 assert.strictEqual(parsed.updates.length, 7);
 assert.ok(parsed.updates.every(update => update.teamName === 'Performance Pod'));
 assert.deepStrictEqual(parsed.updates.map(update => update.category), [
@@ -35,8 +36,10 @@ assert.deepStrictEqual(parsed.updates.map(update => update.category), [
 assert.deepStrictEqual(parsed.updates[0].tags, ['golang', 'monitoring']);
 assert.strictEqual(parsed.updates[0].targetDate, '2026-11-25');
 assert.strictEqual(parsed.updates[0].jira, 'RITM8019400');
+assert.strictEqual(parsed.updates[0].status, 'in-progress');
 assert.strictEqual(parsed.updates[1].targetDate, '');
 assert.strictEqual(parsed.updates[1].jira, '');
+assert.strictEqual(parsed.updates[1].status, '');
 assert.strictEqual(parsed.actions.length, 4);
 assert.ok(parsed.actions.every(action => action.teamName === 'Performance Pod'));
 assert.strictEqual(parsed.actions[0].jira, 'RITM8019234');
@@ -59,6 +62,9 @@ assert.strictEqual(targetTask.actions[0].dueDate, '2026-12-02');
 const badTarget = parseTextImport('17 Nov 2026\n- A note | Target: someday');
 assert.strictEqual(badTarget.updates.length, 0);
 assert.ok(badTarget.errors[0].includes('target date'));
+const badStatus = parseTextImport('17 Nov 2026\n- A note | Status: waiting');
+assert.strictEqual(badStatus.updates.length, 0);
+assert.ok(badStatus.errors[0].toLowerCase().includes('status'));
 
 const existing = {
     teams: [{ name: 'Performance Pod', members: 'Murthy' }],

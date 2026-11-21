@@ -181,6 +181,8 @@ function parseSimpleNotes(text) {
             }
             const targetDate = readOptionalDate(parsedLine.details.target, lineNo, result.errors);
             if (targetDate === null) return;
+            const status = readOptionalStatus(parsedLine.details.status, lineNo, result.errors);
+            if (status === null) return;
             result.teams.push({
                 line: lineNo,
                 name: parsedLine.text,
@@ -188,7 +190,8 @@ function parseSimpleNotes(text) {
                 members: parsedLine.details.people || '',
                 color: normalizeColor(parsedLine.details.color),
                 targetDate: targetDate || '',
-                jira: parsedLine.details.ticket || ''
+                jira: parsedLine.details.ticket || '',
+                status
             });
             return;
         }
@@ -224,11 +227,14 @@ function parseSimpleNotes(text) {
         const category = guessCategory(parsedLine.text, parsedLine.details.type);
         const targetDate = readOptionalDate(parsedLine.details.target, lineNo, result.errors);
         if (targetDate === null) return;
+        const status = readOptionalStatus(parsedLine.details.status, lineNo, result.errors);
+        if (status === null) return;
         result.updates.push({
             line: lineNo,
             date: currentDate,
             targetDate: targetDate || '',
             jira: parsedLine.details.ticket || '',
+            status,
             category: category.value,
             categoryWarning: category.warning,
             teamName: parsedLine.details.team || '',
@@ -318,6 +324,8 @@ function parseStructuredImport(text) {
             }
             const teamTarget = readOptionalDate(fields.TARGET, start, result.errors);
             if (teamTarget === null) return;
+            const teamStatus = readOptionalStatus(fields.STATUS, start, result.errors);
+            if (teamStatus === null) return;
             result.teams.push({
                 line: start,
                 name: fields.NAME,
@@ -325,7 +333,8 @@ function parseStructuredImport(text) {
                 members: fields.MEMBERS || '',
                 color: normalizeColor(fields.COLOR),
                 targetDate: teamTarget || '',
-                jira: fields.JIRA || fields.TICKET || ''
+                jira: fields.JIRA || fields.TICKET || '',
+                status: teamStatus
             });
             return;
         }
@@ -343,11 +352,14 @@ function parseStructuredImport(text) {
             const category = normalizeCategory(fields.CATEGORY);
             const targetDate = readOptionalDate(fields.TARGET, start, result.errors);
             if (targetDate === null) return;
+            const status = readOptionalStatus(fields.STATUS, start, result.errors);
+            if (status === null) return;
             result.updates.push({
                 line: start,
                 date,
                 targetDate: targetDate || '',
                 jira: fields.JIRA || fields.TICKET || '',
+                status,
                 category: category.value,
                 categoryWarning: category.warning,
                 teamName: fields.TEAM || '',
@@ -442,6 +454,16 @@ function normalizeCategory(value) {
 function normalizeStatus(value) {
     const key = (value || 'pending').trim().toLowerCase();
     return STATUS_ALIASES[key] || 'pending';
+}
+
+function readOptionalStatus(raw, lineNo, errors) {
+    if (!raw || !String(raw).trim()) return '';
+    const key = String(raw).trim().toLowerCase();
+    if (!STATUS_ALIASES[key]) {
+        errors.push(`Line ${lineNo}: the status "${raw}" could not be read. Use Pending, In progress, Blocked, or Done.`);
+        return null;
+    }
+    return STATUS_ALIASES[key];
 }
 
 function normalizePriority(value) {
@@ -566,8 +588,8 @@ const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace 
 #    A team that is already in the app keeps its name, about, and color.
 #    New people on that team are added.
 #
-# Team labels:   People:   About:   Color:   Target:   Ticket:
-# Update labels: Team:   People:   Type:   Tags:   Target:   Ticket:
+# Team labels:   People:   About:   Color:   Target:   Ticket:   Status:
+# Update labels: Team:   People:   Type:   Tags:   Target:   Ticket:   Status:
 # Task labels:   Who:   Team:   Urgent:   Status:   Due:   Target:   Ticket:   Notes:   Repeats:
 #
 # Type: Meeting, Discussion, PR review, Approval, Audit, Planning, Issue, Other
@@ -579,10 +601,10 @@ const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace 
 # A team already in the app keeps its color. Open Teams in the app to see it.
 
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026 | Ticket: PERF-120
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026 | Ticket: PERF-120 | Status: In progress
 
 17 Nov 2026
-- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026 | Ticket: RITM8019400
+- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026 | Ticket: RITM8019400 | Status: In progress
 - Morning sync on the MB app slow screens | Team: Performance Pod | People: Murthy | Type: Meeting | Tags: mb app
 
 18 Nov 2026
