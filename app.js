@@ -526,7 +526,7 @@ function renderUpdates(filteredUpdates = null) {
                 : '';
             
             html += `
-                <div class="update-item" style="animation-delay: ${index * 0.05}s; border-left-color: ${team ? team.color : 'var(--primary)'};">
+                <div class="update-item" style="animation-delay: ${index * 0.05}s; border-left-color: ${team ? team.color : 'var(--primary)'}; cursor: pointer;" onclick="openEditUpdateModal('${update.id}')">
                     <div class="update-header">
                         <div class="update-meta">
                             <span class="update-category category-${update.category}">
@@ -1143,7 +1143,7 @@ function renderRecentUpdates() {
     }
     
     container.innerHTML = recent.map(update => `
-        <div class="recent-update-item">
+        <div class="recent-update-item" style="cursor: pointer" onclick="showView('daily'); setTimeout(() => openEditUpdateModal('${update.id}'), 100)">
             <div class="recent-update-date">${formatDate(update.date, 'short')}</div>
             <div class="recent-update-content">
                 <div class="recent-update-title">${update.description.substring(0, 60)}${update.description.length > 60 ? '...' : ''}</div>
@@ -1192,7 +1192,7 @@ function renderTeamSummary() {
         const actions = appData.actions.filter(a => a.teamId === team.id && a.status !== 'completed').length;
         
         return `
-            <div class="team-summary-item">
+            <div class="team-summary-item" style="cursor: pointer" onclick="showView('teams'); setTimeout(() => openEditTeamModal('${team.id}'), 100)">
                 <div class="team-summary-name">
                     <span class="team-color-dot" style="background: ${team.color}"></span>
                     <strong>${team.name}</strong>

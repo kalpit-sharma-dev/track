@@ -1473,6 +1473,19 @@ form {
     border-radius: var(--radius-sm);
 }
 
+.recent-update-item[style*="cursor: pointer"]:hover::after {
+    content: 'Click to edit';
+    position: absolute;
+    right: 10px;
+    font-size: 0.65rem;
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.recent-update-item {
+    position: relative;
+}
+
 .recent-update-item:last-child {
     border-bottom: none;
 }
@@ -1521,6 +1534,19 @@ form {
     margin: 0 -24px;
     padding: 14px 24px;
     border-radius: var(--radius-sm);
+}
+
+.team-summary-item[style*="cursor: pointer"]:hover::after {
+    content: 'Click to edit';
+    position: absolute;
+    right: 24px;
+    font-size: 0.65rem;
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.team-summary-item {
+    position: relative;
 }
 
 .team-summary-item:last-child {
