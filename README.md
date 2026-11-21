@@ -318,35 +318,53 @@ Long lists of daily updates and action items also load in pages, so a year of no
 
 Use **Upload Notes** when the day is already written in a text file. This **adds** records. It does not change or delete anything already in the app.
 
-1. Click **Notes Template** and open the downloaded text file.
-2. Delete the sample lines and type your own notes. A date goes on its own line. Each thing you did starts with a dash.
+1. Click **Notes Template** and open the downloaded text file. It is one filled-in team, with the team line, daily updates, and tasks.
+2. Copy that block when you have another team. Replace the names, dates, and sentences with your own.
 3. Click **Upload Notes** and choose that file.
 4. Check the counts, then confirm. Uploading the same notes again skips the lines that are already saved.
 
 ```
 Teams
-- Performance Pod | People: Murthy, Rajesh
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: #EF4444
 
 17 Nov 2026
-- Talked with Murthy about the MB app | Team: Performance Pod | People: Murthy
-- Reviewed the cost of the staggered bundle push
+- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring
+- Morning sync on the MB app slow screens | Team: Performance Pod | People: Murthy | Type: Meeting | Tags: mb app
+
+18 Nov 2026
+- Reviewed 4 pull requests for the performance fixes | Team: Performance Pod | People: Rajesh | Type: PR review | Tags: pr
+- Approved the staggered bundle push plan | Team: Performance Pod | People: Murthy | Type: Approval | Tags: release
+
+19 Nov 2026
+- Checkmarx review for the R12 Go services | Team: Performance Pod | People: Murthy, Rajesh | Type: Audit | Tags: checkmarx, r12
+- Planned the next monitoring dashboard work | Team: Performance Pod | People: Rajesh | Type: Planning | Tags: dashboard
+- Login latency spike after the last release | Team: Performance Pod | People: Murthy | Type: Issue | Tags: latency
 
 Tasks
-- Ask Shyam about the tech backlog | Who: Shyam | Urgent: High | Due: 21 Nov 2026
+- Fix golang service monitoring | Who: Murthy | Team: Performance Pod | Urgent: High | Status: In progress | Due: 25 Nov 2026 | Ticket: RITM8019234 | Notes: Confirm the new entry point and share the dashboard link | Repeats: Weekly
+- Share the MB app trace with Rajesh | Who: Rajesh | Team: Performance Pod | Urgent: Medium | Status: Pending | Due: 21 Nov 2026 | Notes: Include the slow screen names
+- Close the Checkmarx R12 findings | Who: Murthy | Team: Performance Pod | Urgent: High | Status: Blocked | Due: 28 Nov 2026 | Ticket: RITM8019300 | Notes: Waiting on the security sign-off
+- Publish the weekly performance note | Who: Rajesh | Team: Performance Pod | Urgent: Low | Status: Done | Due: 19 Nov 2026 | Notes: Sent to the pod channel | Repeats: Weekly
 ```
 
-You only need the date and the dashed lines. Add the words after `|` when you have them:
+A date and a dashed line are enough. Add the words after `|` when you have them:
 
 | After the bar | What to write |
 | --- | --- |
-| `Team:` | Performance Pod, Deposits, MFA, Drishti AI |
 | `People:` or `Who:` | The person, or several names separated by commas |
-| `Type:` | Meeting, Discussion, PR review, Audit, Planning |
+| `About:` | A short line about the team |
+| `Color:` | A color code such as `#EF4444` |
+| `Team:` | The same team name on every update and task |
+| `Type:` | Meeting, Discussion, PR review, Approval, Audit, Planning, Issue, or Other |
+| `Tags:` | Words separated by commas, such as `golang, monitoring` |
 | `Urgent:` | High, Medium, or Low |
+| `Status:` | Pending, In progress, Blocked, or Done |
 | `Due:` | 21 Nov 2026 |
 | `Ticket:` | RITM8019234 |
+| `Notes:` | Extra detail for a task |
+| `Repeats:` | Daily, Weekly, Biweekly, or Monthly |
 
-`17 Nov` is enough for the date. The app uses the current year. A task with no `Who:` is saved under your name, Me.
+`17 Nov` is enough for the date. The app uses the current year. A task with no `Who:` is saved under your name, Me. A new team picks up `About:` and `Color:`. A team already in the app keeps the about text and color it already has.
 
 | If this already exists | What upload does |
 | --- | --- |

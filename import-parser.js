@@ -172,9 +172,9 @@ function parseSimpleNotes(text) {
             result.teams.push({
                 line: lineNo,
                 name: parsedLine.text,
-                description: '',
+                description: parsedLine.details.about || '',
                 members: parsedLine.details.people || '',
-                color: '#6366F1'
+                color: normalizeColor(parsedLine.details.color)
             });
             return;
         }
@@ -229,6 +229,9 @@ const SIMPLE_DETAIL_KEYS = {
     team: 'team',
     people: 'people',
     with: 'people',
+    about: 'about',
+    description: 'about',
+    color: 'color',
     type: 'type',
     category: 'type',
     tags: 'tags',
@@ -510,33 +513,50 @@ function planTextImport(data, parsed) {
     return plan;
 }
 
-const IMPORT_TEMPLATE = `# Daily notes
+const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace the words with your own.
 #
 # How to fill this in
-# 1. Write the date on its own line, such as 17 Nov 2026. The year is optional.
-# 2. Write a dash, then what you did.
-# 3. Under Tasks, write a dash and the task. Add Who: and the person's name.
-# 4. Extra details are optional. Add them after a | mark.
-#    Team:    People:    Type:    Urgent:    Due:    Ticket:
-# 5. Save this file, then click Upload Notes in the app.
+# 1. Keep one Teams line, the dates, and the Tasks list for a single team.
+# 2. Change the team name, people, dates, and sentences.
+# 3. A date goes on its own line, such as 17 Nov 2026. The year is optional.
+# 4. Each update or task starts with a dash.
+# 5. Copy a label after a | mark only when you have that detail.
+# 6. Save the file, then click Upload Notes.
 #    Upload adds these notes. It does not change notes you already saved.
-# 6. Delete the sample lines and write your own.
+#    A team that is already in the app keeps its name, about, and color.
+#    New people on that team are added.
+#
+# Team labels:   People:   About:   Color:
+# Update labels: Team:   People:   Type:   Tags:
+# Task labels:   Who:   Team:   Urgent:   Status:   Due:   Ticket:   Notes:   Repeats:
+#
+# Type: Meeting, Discussion, PR review, Approval, Audit, Planning, Issue, Other
+# Urgent: High, Medium, Low
+# Status: Pending, In progress, Blocked, Done
+# Repeats: Daily, Weekly, Biweekly, Monthly
+# Color is a code such as #EF4444
 
 Teams
-- Performance Pod | People: Murthy, Rajesh
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: #EF4444
 
 17 Nov 2026
-- Talked with the perf SRE team about golang monitoring | Team: Performance Pod | People: Murthy, Rajesh | Tags: golang, monitoring
+- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring
+- Morning sync on the MB app slow screens | Team: Performance Pod | People: Murthy | Type: Meeting | Tags: mb app
 
 18 Nov 2026
-- Reviewed 4-5 pull requests for AI Banking | Team: Drishti AI | Type: PR review | People: Chandan
+- Reviewed 4 pull requests for the performance fixes | Team: Performance Pod | People: Rajesh | Type: PR review | Tags: pr
+- Approved the staggered bundle push plan | Team: Performance Pod | People: Murthy | Type: Approval | Tags: release
 
 19 Nov 2026
-- Checkmarx discussion with Saman for the R12 release | Type: Audit | People: Saman
+- Checkmarx review for the R12 Go services | Team: Performance Pod | People: Murthy, Rajesh | Type: Audit | Tags: checkmarx, r12
+- Planned the next monitoring dashboard work | Team: Performance Pod | People: Rajesh | Type: Planning | Tags: dashboard
+- Login latency spike after the last release | Team: Performance Pod | People: Murthy | Type: Issue | Tags: latency
 
 Tasks
-- Set up SonarQube on Jenkins | Who: Pratap, Adhika, Chandan | Ticket: RITM8019234 | Team: Drishti AI | Due: 25 Nov 2026
-- Priority for tech backlog | Who: Shyam | Urgent: High | Due: 21 Nov 2026 | Status: In progress
+- Fix golang service monitoring | Who: Murthy | Team: Performance Pod | Urgent: High | Status: In progress | Due: 25 Nov 2026 | Ticket: RITM8019234 | Notes: Confirm the new entry point and share the dashboard link | Repeats: Weekly
+- Share the MB app trace with Rajesh | Who: Rajesh | Team: Performance Pod | Urgent: Medium | Status: Pending | Due: 21 Nov 2026 | Notes: Include the slow screen names
+- Close the Checkmarx R12 findings | Who: Murthy | Team: Performance Pod | Urgent: High | Status: Blocked | Due: 28 Nov 2026 | Ticket: RITM8019300 | Notes: Waiting on the security sign-off
+- Publish the weekly performance note | Who: Rajesh | Team: Performance Pod | Urgent: Low | Status: Done | Due: 19 Nov 2026 | Notes: Sent to the pod channel | Repeats: Weekly
 `;
 
 if (typeof module !== 'undefined' && module.exports) {

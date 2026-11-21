@@ -10,33 +10,42 @@ const parsed = parseTextImport(IMPORT_TEMPLATE);
 assert.strictEqual(parsed.errors.length, 0, parsed.errors.join('\n'));
 assert.strictEqual(parsed.teams.length, 1);
 assert.strictEqual(parsed.teams[0].name, 'Performance Pod');
-assert.strictEqual(parsed.updates.length, 3);
-assert.deepStrictEqual(parsed.updates.map(update => update.date), ['2026-11-17', '2026-11-18', '2026-11-19']);
-assert.strictEqual(parsed.updates[1].category, 'review');
-assert.strictEqual(parsed.updates[2].category, 'audit');
+assert.strictEqual(parsed.teams[0].description, 'App performance and reliability');
+assert.strictEqual(parsed.teams[0].members, 'Murthy, Rajesh');
+assert.strictEqual(parsed.teams[0].color, '#EF4444');
+assert.strictEqual(parsed.updates.length, 7);
+assert.ok(parsed.updates.every(update => update.teamName === 'Performance Pod'));
+assert.deepStrictEqual(parsed.updates.map(update => update.category), [
+    'discussion', 'meeting', 'review', 'approval', 'audit', 'planning', 'issue'
+]);
 assert.deepStrictEqual(parsed.updates[0].tags, ['golang', 'monitoring']);
-assert.strictEqual(parsed.actions.length, 2);
+assert.strictEqual(parsed.actions.length, 4);
+assert.ok(parsed.actions.every(action => action.teamName === 'Performance Pod'));
 assert.strictEqual(parsed.actions[0].jira, 'RITM8019234');
-assert.strictEqual(parsed.actions[0].title, 'Set up SonarQube on Jenkins');
-assert.strictEqual(parsed.actions[1].status, 'in-progress');
-assert.strictEqual(parsed.actions[1].owner, 'Shyam');
+assert.strictEqual(parsed.actions[0].title, 'Fix golang service monitoring');
+assert.strictEqual(parsed.actions[0].status, 'in-progress');
+assert.strictEqual(parsed.actions[0].priority, 'high');
+assert.strictEqual(parsed.actions[0].recurring, 'weekly');
+assert.ok(parsed.actions[0].notes.includes('dashboard link'));
+assert.strictEqual(parsed.actions[1].status, 'pending');
+assert.strictEqual(parsed.actions[2].status, 'blocked');
+assert.strictEqual(parsed.actions[3].status, 'completed');
 
 const existing = {
     teams: [{ name: 'Performance Pod', members: 'Murthy' }],
     updates: [{ date: '2026-11-17', description: parsed.updates[0].description }],
-    actions: [{ title: 'Priority for tech backlog', owner: 'Shyam' }]
+    actions: [{ title: 'Fix golang service monitoring', owner: 'Murthy' }]
 };
 const plan = planTextImport(existing, parsed);
-assert.strictEqual(plan.newTeams.length, 1);
-assert.strictEqual(plan.newTeams[0].name, 'Drishti AI');
+assert.strictEqual(plan.newTeams.length, 0);
 assert.strictEqual(plan.memberAdds.length, 1);
 assert.deepStrictEqual(plan.memberAdds[0].members, ['Rajesh']);
 assert.strictEqual(plan.skippedTeams, 1);
-assert.strictEqual(plan.newUpdates.length, 2);
+assert.strictEqual(plan.newUpdates.length, 6);
 assert.strictEqual(plan.skippedUpdates, 1);
-assert.strictEqual(plan.newActions.length, 1);
+assert.strictEqual(plan.newActions.length, 3);
 assert.strictEqual(plan.skippedActions, 1);
-assert.strictEqual(plan.newActions[0].title, 'Set up SonarQube on Jenkins');
+assert.strictEqual(plan.newActions[0].title, 'Share the MB app trace with Rajesh');
 
 const oldFormat = parseTextImport([
     '=== UPDATES ===',
@@ -57,13 +66,20 @@ assert.strictEqual(plain.errors.length, 0, plain.errors.join('\n'));
 assert.strictEqual(plain.updates[0].description, 'Forgot the dash but still wrote the note');
 
 const again = planTextImport({
-    teams: existing.teams.concat([{ name: 'Drishti AI', members: '' }]),
+    teams: existing.teams,
     updates: existing.updates.concat(plan.newUpdates.map(update => ({ date: update.date, description: update.description }))),
-    actions: existing.actions.concat([{ title: plan.newActions[0].title, owner: plan.newActions[0].owner }])
+    actions: existing.actions.concat(plan.newActions.map(action => ({ title: action.title, owner: action.owner })))
 }, parsed);
 assert.strictEqual(again.newTeams.length, 0);
 assert.strictEqual(again.newUpdates.length, 0);
 assert.strictEqual(again.newActions.length, 0);
+
+const fresh = planTextImport({ teams: [], updates: [], actions: [] }, parsed);
+assert.strictEqual(fresh.newTeams.length, 1);
+assert.strictEqual(fresh.newTeams[0].description, 'App performance and reliability');
+assert.strictEqual(fresh.newTeams[0].color, '#EF4444');
+assert.strictEqual(fresh.newUpdates.length, 7);
+assert.strictEqual(fresh.newActions.length, 4);
 
 const broken = parseTextImport('=== UPDATES ===\nDATE: yesterday\nTEXT: Missing a real date\n---\n');
 assert.strictEqual(broken.updates.length, 0);
