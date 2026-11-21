@@ -507,6 +507,17 @@ html {
     transition: all var(--transition-fast);
 }
 
+.header-actions input[type="week"],
+.header-actions input[type="month"],
+.header-actions input[type="number"] {
+    background-image: none;
+    padding-right: 14px;
+}
+
+.header-actions input[type="number"] {
+    width: 108px;
+}
+
 .header-actions select:focus,
 .header-actions input:focus,
 .styled-select:focus {

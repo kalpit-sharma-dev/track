@@ -1,6 +1,6 @@
 # Tech Lead Daily Tracker
 
-A modern, beautiful web-based dashboard for tech leads to track daily activities, manage action items, monitor team progress, and generate weekly reports for management.
+A modern, beautiful web-based dashboard for tech leads to track daily activities, manage action items, monitor team progress, and generate weekly, monthly, quarterly, and yearly reports for management.
 
 ![Dashboard Preview](https://img.shields.io/badge/Status-Ready-brightgreen) ![Platform](https://img.shields.io/badge/Platform-Mac%20%7C%20Windows-blue) ![Notes file](https://img.shields.io/badge/Notes-tracker--data.json-blue)
 
@@ -29,7 +29,7 @@ A modern, beautiful web-based dashboard for tech leads to track daily activities
 | **Action Items** | Kanban board with priorities, owners, due dates, JIRA links |
 | **Teams** | Manage multiple teams (Techbacklog, Deposits, MFA, etc.) |
 | **Analytics** | Charts for 7–90 days, this/last quarter, half year, and year |
-| **Weekly Reports** | Auto-generated reports with export to PDF or copy for email |
+| **Management reports** | Weekly, monthly, quarterly, and yearly updates, with PDF and email copy |
 | **Search** | Find any update, person, team, tag, ticket, or action |
 | **Tags** | Add custom tags to updates for better organization |
 | **Recurring Tasks** | Set actions to repeat daily, weekly, or monthly |
@@ -223,17 +223,20 @@ You can also just double-click `index.html` - all features work! The local serve
 - Click on any action card to edit it
 - Change status between: Pending → In Progress → Completed / Blocked
 
-### Generating Weekly Reports
+### Generating management reports
 
-1. Click **"Weekly Report"** in the sidebar
-2. Select the week using the date picker
+Weekly, monthly, quarterly, and yearly reports use the same layout.
+
+1. Click **Weekly Report**, **Monthly Report**, **Quarterly Report**, or **Yearly Report** in the sidebar
+2. Pick the week, month, quarter, or year
 3. The report is written for management, team by team:
-   - A short read of the week
+   - A short read of that period
    - What happened, with the day, the type of work, and who was there
    - Who is working on what, with status, target date, and ticket
    - The target date, Jira number, and status on each note, task, and team that has one
+   - A timeline for the period: days for a week or month, weeks for a quarter, and months for a year
    - Blockers that need attention
-   - Teams with no movement that week
+   - Teams with no movement in that period
 
 **Exporting:**
 - **Copy for Email**: Copies a plain-text update you can paste into Outlook or Gmail

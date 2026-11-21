@@ -515,9 +515,10 @@ function showView(viewName) {
         item.classList.toggle('active', item.dataset.view === viewName);
     });
     
-    if (viewName === 'weekly') {
-        setCurrentWeek();
-        generateWeeklyReport();
+    const reportPeriod = { weekly: 'week', monthly: 'month', quarterly: 'quarter', yearly: 'year' }[viewName];
+    if (reportPeriod) {
+        setCurrentPeriod(reportPeriod);
+        generatePeriodReport(reportPeriod);
     }
     
     if (viewName === 'analytics') {
@@ -550,10 +551,23 @@ function setDefaultDates() {
     document.getElementById('filterDate').value = '';
 }
 
-// Set current week in week selector
 function setCurrentWeek() {
-    const iso = getISOWeek(new Date());
-    document.getElementById('weekSelector').value = `${iso.year}-W${String(iso.week).padStart(2, '0')}`;
+    setCurrentPeriod('week');
+}
+
+function setCurrentPeriod(period) {
+    const now = new Date();
+    if (period === 'week') {
+        const iso = getISOWeek(now);
+        document.getElementById('weekSelector').value = `${iso.year}-W${String(iso.week).padStart(2, '0')}`;
+    } else if (period === 'month') {
+        document.getElementById('monthSelector').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    } else if (period === 'quarter') {
+        document.getElementById('quarterYear').value = now.getFullYear();
+        document.getElementById('quarterPart').value = String(Math.floor(now.getMonth() / 3) + 1);
+    } else if (period === 'year') {
+        document.getElementById('yearSelector').value = now.getFullYear();
+    }
 }
 
 function getISOWeek(date) {
@@ -1369,9 +1383,9 @@ function updateDashboard() {
     // Team summary
     renderTeamSummary();
 
-    if (document.getElementById('weekly-view')?.classList.contains('active')) {
-        generateWeeklyReport();
-    }
+    const activeReport = document.querySelector('.view.active');
+    const activePeriod = { 'weekly-view': 'week', 'monthly-view': 'month', 'quarterly-view': 'quarter', 'yearly-view': 'year' }[activeReport?.id];
+    if (activePeriod) generatePeriodReport(activePeriod);
 }
 
 function getWeekStart(date) {
@@ -1461,6 +1475,7 @@ function renderTeamSummary() {
 // ==================== WEEKLY REPORT ====================
 
 let latestWeeklyModel = null;
+let latestReportModel = null;
 
 const REPORT_CATEGORY_LABELS = {
     meeting: 'Meeting',
@@ -1661,7 +1676,7 @@ function namedPeople(pack) {
 
 function managementLead(model, buckets, people) {
     if (!model.updates.length && !model.doneActions.length && !model.openActions.length) {
-        return 'Nothing was logged for this week, and no open work falls inside it.';
+        return `Nothing was logged for this ${model.periodName || 'week'}, and no open work falls inside it.`;
     }
     const sentences = [];
     if (model.updates.length && buckets.active.length) {
@@ -1718,7 +1733,7 @@ function insightTiles(model, buckets, people) {
             detail: blockers.slice(0, 2).map(action => action.title).join('; ')
         });
     } else {
-        tiles.push({ kicker: 'Needs a decision', title: 'No blockers', detail: 'Nothing is marked blocked for this week.' });
+        tiles.push({ kicker: 'Needs a decision', title: 'No blockers', detail: `Nothing is marked blocked for this ${model.periodName || 'week'}.` });
     }
     const busiestPerson = [...people].sort((a, b) => b.open - a.open || a.name.localeCompare(b.name))[0];
     if (busiestPerson && busiestPerson.open > 0) {
@@ -1731,7 +1746,7 @@ function insightTiles(model, buckets, people) {
         tiles.push({
             kicker: 'Most visible',
             title: people[0].name,
-            detail: `${countWord(people[0].notes, 'note', 'notes')} this week`
+            detail: `${countWord(people[0].notes, 'note', 'notes')} this ${model.periodName || 'week'}`
         });
     } else {
         tiles.push({ kicker: 'Most open work', title: 'No owners named', detail: 'Add a person on a note or a task.' });
@@ -1739,11 +1754,69 @@ function insightTiles(model, buckets, people) {
     return tiles;
 }
 
-function countsByDay(items, weekStart, dateOf) {
-    return weekDayList(weekStart).map(day => ({
+function eachLocalDay(start, end) {
+    const days = [];
+    const cursor = startOfDay(start);
+    const last = startOfDay(end);
+    while (cursor <= last) {
+        days.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+}
+
+function countInRange(items, dateOf, rangeStart, rangeEnd) {
+    const start = startOfDay(rangeStart);
+    const end = endOfDay(rangeEnd);
+    return items.filter(item => {
+        const date = parseLocalDate(dateOf(item));
+        return date && date >= start && date <= end;
+    }).length;
+}
+
+function timelineBuckets(items, model, dateOf) {
+    const period = model.period || 'week';
+    if (period === 'year') {
+        const year = model.weekStart.getFullYear();
+        return Array.from({ length: 12 }, (_, month) => {
+            const day = new Date(year, month, 1);
+            const rangeEnd = new Date(year, month + 1, 0);
+            return {
+                day,
+                label: day.toLocaleDateString('en-US', { month: 'short' }),
+                date: '',
+                caption: day.toLocaleDateString('en-US', { month: 'long' }),
+                count: countInRange(items, dateOf, day, rangeEnd)
+            };
+        });
+    }
+    if (period === 'quarter') {
+        const buckets = [];
+        const cursor = startOfDay(model.weekStart);
+        const weekday = cursor.getDay() || 7;
+        cursor.setDate(cursor.getDate() - weekday + 1);
+        const last = startOfDay(model.weekEnd);
+        while (cursor <= last) {
+            const weekStart = new Date(cursor);
+            const weekEnd = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 6);
+            const visibleStart = weekStart < startOfDay(model.weekStart) ? startOfDay(model.weekStart) : weekStart;
+            const visibleEnd = weekEnd > startOfDay(model.weekEnd) ? model.weekEnd : weekEnd;
+            buckets.push({
+                day: visibleStart,
+                label: visibleStart.toLocaleDateString('en-US', { month: 'short' }),
+                date: visibleStart.getDate(),
+                caption: `Week of ${visibleStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+                count: countInRange(items, dateOf, visibleStart, visibleEnd)
+            });
+            cursor.setDate(cursor.getDate() + 7);
+        }
+        return buckets;
+    }
+    return eachLocalDay(model.weekStart, model.weekEnd).map(day => ({
         day,
         label: day.toLocaleDateString('en-US', { weekday: 'short' }),
         date: day.getDate(),
+        caption: day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
         count: items.filter(item => {
             const date = parseLocalDate(dateOf(item));
             return date && sameLocalDay(date, day);
@@ -1751,10 +1824,17 @@ function countsByDay(items, weekStart, dateOf) {
     }));
 }
 
+function railColumns(count) {
+    if (count === 12) return 6;
+    if (count <= 7) return count || 1;
+    return 7;
+}
+
 function railHtml(days, color) {
-    return `<div class="week-rail">${days.map(day => `
+    const columns = railColumns(days.length);
+    return `<div class="week-rail" style="grid-template-columns:repeat(${columns}, minmax(0, 1fr))">${days.map(day => `
         <div class="week-day${day.count ? ' has-work' : ''}"${day.count ? ` style="background:${colorWithAlpha(color, '22')}"` : ''}>
-            <span>${day.label}</span><em>${day.date}</em><strong>${day.count}</strong>
+            <span>${escapeHtml(String(day.label))}</span>${day.date !== '' ? `<em>${escapeHtml(String(day.date))}</em>` : ''}<strong>${day.count}</strong>
         </div>`).join('')}</div>`;
 }
 
@@ -1819,17 +1899,17 @@ function teamCardHtml(pack, model, color, title, subtitle) {
         <div class="team-brief-body">
             <div>
                 <div class="section-label">Timeline</div>
-                ${railHtml(countsByDay(pack.updates, model.weekStart, update => update.date), color)}
+                ${railHtml(timelineBuckets(pack.updates, model, update => update.date), color)}
             </div>
             <div class="team-split">
                 <div>
                     <h4>What happened</h4>
-                    ${pack.updates.length ? pack.updates.map(happenedHtml).join('') : '<p class="fine">No notes this week.</p>'}
+                    ${pack.updates.length ? pack.updates.map(happenedHtml).join('') : `<p class="fine">No notes this ${escapeHtml(model.periodName || 'week')}.</p>`}
                 </div>
                 <div>
                     <h4>Who is working on what</h4>
-                    ${pack.open.length ? pack.open.map(action => workHtml(action, model.weekEnd)).join('') : '<p class="fine">No open tasks this week.</p>'}
-                    ${pack.done.length ? `<h4 class="split-follow">Finished this week</h4>${pack.done.map(doneHtml).join('')}` : ''}
+                    ${pack.open.length ? pack.open.map(action => workHtml(action, model.weekEnd)).join('') : `<p class="fine">No open tasks this ${escapeHtml(model.periodName || 'week')}.</p>`}
+                    ${pack.done.length ? `<h4 class="split-follow">Finished this ${escapeHtml(model.periodName || 'week')}</h4>${pack.done.map(doneHtml).join('')}` : ''}
                 </div>
             </div>
         </div>
@@ -1860,7 +1940,7 @@ function renderWeeklyHtml(model) {
         : '';
     const quietNames = buckets.quiet.map(quietTeamLabel);
     const quiet = quietNames.length
-        ? `<div class="quiet-teams"><div class="section-label">Quiet this week</div><p>${escapeHtml(joinNames(quietNames))} had no notes and no open work in this week.</p></div>`
+        ? `<div class="quiet-teams"><div class="section-label">Quiet this ${escapeHtml(model.periodName || 'week')}</div><p>${escapeHtml(joinNames(quietNames))} had no notes and no open work in this ${escapeHtml(model.periodName || 'week')}.</p></div>`
         : '';
     const attention = blockers.length ? `<section class="mgmt-callout"><h4>Needs attention</h4><ul>${blockers.map(action => {
         const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), jiraPhrase(action.jira), actionDetail(action)].filter(Boolean);
@@ -1889,33 +1969,117 @@ function renderWeeklyHtml(model) {
             `).join('')}</div>
             <section class="timeline-board">
                 <div class="section-label">When the work happened</div>
-                ${railHtml(countsByDay(model.updates, model.weekStart, update => update.date), '#4F46E5')}
+                ${railHtml(timelineBuckets(model.updates, model, update => update.date), '#4F46E5')}
             </section>
             ${attention}
             ${peopleBoard}
-            ${cards || (!loose ? '<p class="empty-state">No team had notes or open work in this week.</p>' : '')}
+            ${cards || (!loose ? `<p class="empty-state">No team had notes or open work in this ${escapeHtml(model.periodName || 'week')}.</p>` : '')}
             ${loose}
             ${quiet}
             <p class="report-foot">Prepared from the daily tracker · ${escapeHtml(new Date().toLocaleString())}</p>
         </div>`;
 }
 
+const REPORT_VIEWS = {
+    week: { hostId: 'weeklyReport', buttonId: 'downloadWeeklyPdf', choice: 'week' },
+    month: { hostId: 'monthlyReport', buttonId: 'downloadMonthlyPdf', choice: 'month' },
+    quarter: { hostId: 'quarterlyReport', buttonId: 'downloadQuarterlyPdf', choice: 'quarter' },
+    year: { hostId: 'yearlyReport', buttonId: 'downloadYearlyPdf', choice: 'year' }
+};
+
+function readPeriod(period) {
+    if (period === 'week') {
+        const value = document.getElementById('weekSelector')?.value || '';
+        if (!value.includes('-W')) return null;
+        const [yearText, weekText] = value.split('-W');
+        const weekStart = getDateOfISOWeek(parseInt(weekText, 10), parseInt(yearText, 10));
+        const weekEnd = endOfDay(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6));
+        return {
+            start: weekStart,
+            end: weekEnd,
+            label: `Week ${Number(weekText)}, ${yearText}`,
+            range: formatWeekRange(weekStart, weekEnd),
+            fileKey: value,
+            periodName: 'week'
+        };
+    }
+    if (period === 'month') {
+        const value = document.getElementById('monthSelector')?.value || '';
+        const match = /^(\d{4})-(\d{2})$/.exec(value);
+        if (!match) return null;
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        if (month < 1 || month > 12) return null;
+        const start = new Date(year, month - 1, 1);
+        const end = endOfDay(new Date(year, month, 0));
+        return {
+            start,
+            end,
+            label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+            range: formatWeekRange(start, end),
+            fileKey: value,
+            periodName: 'month'
+        };
+    }
+    if (period === 'quarter') {
+        const year = Number(document.getElementById('quarterYear')?.value);
+        const part = Number(document.getElementById('quarterPart')?.value);
+        if (!year || part < 1 || part > 4) return null;
+        const startMonth = (part - 1) * 3;
+        const start = new Date(year, startMonth, 1);
+        const end = endOfDay(new Date(year, startMonth + 3, 0));
+        return {
+            start,
+            end,
+            label: `Q${part} ${year}`,
+            range: formatWeekRange(start, end),
+            fileKey: `${year}-Q${part}`,
+            periodName: 'quarter'
+        };
+    }
+    if (period === 'year') {
+        const year = Number(document.getElementById('yearSelector')?.value);
+        if (!year || year < 2000 || year > 2100) return null;
+        const start = new Date(year, 0, 1);
+        const end = endOfDay(new Date(year, 11, 31));
+        return {
+            start,
+            end,
+            label: String(year),
+            range: formatWeekRange(start, end),
+            fileKey: String(year),
+            periodName: 'year'
+        };
+    }
+    return null;
+}
+
 function generateWeeklyReport() {
-    const host = document.getElementById('weeklyReport');
-    const weekInput = document.getElementById('weekSelector')?.value || '';
+    generatePeriodReport('week');
+}
+
+function generatePeriodReport(period) {
+    const view = REPORT_VIEWS[period];
+    const host = view && document.getElementById(view.hostId);
     if (!host) return;
-    if (!weekInput.includes('-W')) {
-        latestWeeklyModel = null;
-        host.innerHTML = '<p class="empty-state">Choose a week to build the management update.</p>';
+    const spec = readPeriod(period);
+    if (!spec) {
+        if (latestReportModel && latestReportModel.period === period) {
+            latestReportModel = null;
+            latestWeeklyModel = null;
+        }
+        host.innerHTML = `<p class="empty-state">Choose a ${view.choice} to build the management update.</p>`;
         return;
     }
-    const [year, week] = weekInput.split('-W');
-    const weekStart = getDateOfISOWeek(parseInt(week, 10), parseInt(year, 10));
-    const weekEnd = endOfDay(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6));
-    latestWeeklyModel = collectWeeklyModel(weekStart, weekEnd);
-    latestWeeklyModel.label = `Week ${Number(week)}, ${year}`;
-    latestWeeklyModel.range = formatWeekRange(weekStart, weekEnd);
-    host.innerHTML = renderWeeklyHtml(latestWeeklyModel);
+    const model = collectWeeklyModel(spec.start, spec.end);
+    model.label = spec.label;
+    model.range = spec.range;
+    model.period = period;
+    model.periodName = spec.periodName;
+    model.fileKey = spec.fileKey;
+    latestReportModel = model;
+    latestWeeklyModel = model;
+    host.innerHTML = renderWeeklyHtml(model);
 }
 
 function activeDuringWeek(item, weekStart, weekEnd) {
@@ -1943,7 +2107,7 @@ async function buildExactReportDocument(report) {
     if (!cssResponse.ok) throw new Error('The report styles could not be loaded. Start the tracker with the Mac or Windows script, then export again.');
     const css = (await cssResponse.text()).replace(/<\/style/gi, '<\\/style');
     const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-    const pageTitle = latestWeeklyModel ? `${latestWeeklyModel.label} ${latestWeeklyModel.range}` : 'Weekly report';
+    const pageTitle = latestReportModel ? `${latestReportModel.label} ${latestReportModel.range}` : 'Management report';
     return `<!DOCTYPE html>
 <html lang="en" data-theme="${theme}">
 <head>
@@ -1962,15 +2126,15 @@ async function buildExactReportDocument(report) {
 </html>`;
 }
 
-async function exportWeeklyReport() {
-    const weekInput = document.getElementById('weekSelector').value;
-    if (!weekInput || !weekInput.includes('-W')) {
-        alert('Pick a week first.');
+async function exportWeeklyReport(period = 'week') {
+    const view = REPORT_VIEWS[period] || REPORT_VIEWS.week;
+    generatePeriodReport(period);
+    if (!latestReportModel || latestReportModel.period !== period) {
+        alert(`Pick a ${view.choice} first.`);
         return;
     }
-    generateWeeklyReport();
-    const report = document.getElementById('weeklyReport');
-    const button = document.getElementById('downloadWeeklyPdf');
+    const report = document.getElementById(view.hostId);
+    const button = document.getElementById(view.buttonId);
     const previousLabel = button ? button.textContent : '';
     if (button) {
         button.disabled = true;
@@ -1978,7 +2142,7 @@ async function exportWeeklyReport() {
     }
     try {
         const html = await buildExactReportDocument(report);
-        const filename = `management-update-${weekInput}.pdf`;
+        const filename = `management-update-${latestReportModel.fileKey}.pdf`;
         const response = await fetch('/api/report.pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2712,19 +2876,19 @@ function emailTeamSection(title, subtitle, pack, model) {
     const lines = ['', title.toUpperCase(), subtitle];
     const blockers = pack.open.filter(action => action.status === 'blocked').length;
     lines.push(`${countWord(pack.updates.length, 'note', 'notes')} · ${countWord(pack.open.length, 'open task', 'open tasks')} · ${countWord(pack.done.length, 'finished', 'finished')}${blockers ? ` · ${countWord(blockers, 'blocker', 'blockers')}` : ''}`);
+    const periodName = model.periodName || 'week';
     lines.push('', 'Timeline');
-    countsByDay(pack.updates, model.weekStart, update => update.date).forEach(day => {
-        const dated = day.day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        lines.push(`${dated}: ${day.count}`);
+    timelineBuckets(pack.updates, model, update => update.date).forEach(day => {
+        lines.push(`${day.caption}: ${day.count}`);
     });
     lines.push('', 'What happened');
-    if (!pack.updates.length) lines.push('• No notes this week.');
+    if (!pack.updates.length) lines.push(`• No notes this ${periodName}.`);
     pack.updates.forEach(update => lines.push(emailUpdateLine(update)));
     lines.push('', 'Who is working on what');
-    if (!pack.open.length) lines.push('• No open tasks this week.');
+    if (!pack.open.length) lines.push(`• No open tasks this ${periodName}.`);
     pack.open.forEach(action => lines.push(emailActionLine(action, model.weekEnd, false)));
     if (pack.done.length) {
-        lines.push('', 'Finished this week');
+        lines.push('', `Finished this ${periodName}`);
         pack.done.forEach(action => lines.push(emailActionLine(action, model.weekEnd, true)));
     }
     return lines.join('\n');
@@ -2752,16 +2916,15 @@ function buildWeeklyEmail(model) {
         `Meetings: ${meetings}`,
         `PR reviews: ${reviews}`,
         '',
-        'THIS WEEK AT A GLANCE'
+        `THIS ${(model.periodName || 'week').toUpperCase()} AT A GLANCE`
     ];
     insightTiles(model, buckets, people).forEach(tile => {
         lines.push(`${tile.kicker}: ${tile.title}`);
         lines.push(`  ${tile.detail}`);
     });
     lines.push('', 'WHEN THE WORK HAPPENED');
-    countsByDay(model.updates, model.weekStart, update => update.date).forEach(day => {
-        const dated = day.day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        lines.push(`${dated}: ${day.count}`);
+    timelineBuckets(model.updates, model, update => update.date).forEach(day => {
+        lines.push(`${day.caption}: ${day.count}`);
     });
     lines.push('', 'NEEDS ATTENTION');
     if (!blockers.length) lines.push('• No blockers are open.');
@@ -2789,27 +2952,24 @@ function buildWeeklyEmail(model) {
     if (looseHas) {
         lines.push(emailTeamSection('Not tagged to a team', 'These notes and tasks have no team, so they are easy to miss.', { ...buckets.loose, team: { members: '' } }, model));
     }
-    if (!buckets.active.length && !looseHas) lines.push('', 'No team had notes or open work in this week.');
+    const periodName = model.periodName || 'week';
+    if (!buckets.active.length && !looseHas) lines.push('', `No team had notes or open work in this ${periodName}.`);
     if (buckets.quiet.length) {
-        lines.push('', 'QUIET THIS WEEK');
-        lines.push(`${joinNames(buckets.quiet.map(quietTeamLabel))} had no notes and no open work in this week.`);
+        lines.push('', `QUIET THIS ${periodName.toUpperCase()}`);
+        lines.push(`${joinNames(buckets.quiet.map(quietTeamLabel))} had no notes and no open work in this ${periodName}.`);
     }
     lines.push('', `Prepared from the daily tracker · ${new Date().toLocaleString()}`);
     return lines.join('\n');
 }
 
-function copyReportToClipboard() {
-    const weekInput = document.getElementById('weekSelector').value;
-    if (!weekInput || !weekInput.includes('-W')) {
-        alert('Pick a week first.');
+function copyReportToClipboard(period = 'week') {
+    const view = REPORT_VIEWS[period] || REPORT_VIEWS.week;
+    generatePeriodReport(period);
+    if (!latestReportModel || latestReportModel.period !== period) {
+        alert(`Pick a ${view.choice} first.`);
         return;
     }
-    generateWeeklyReport();
-    if (!latestWeeklyModel) {
-        alert('Pick a week first.');
-        return;
-    }
-    const report = buildWeeklyEmail(latestWeeklyModel);
+    const report = buildWeeklyEmail(latestReportModel);
     const notify = () => alert('Report copied. Paste it into your email.');
     const fallbackCopy = () => {
         const textarea = document.createElement('textarea');
