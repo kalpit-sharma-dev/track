@@ -38,11 +38,12 @@
                 </li>
             </ul>
             <div class="sidebar-footer">
-                <button class="btn btn-secondary" onclick="exportData()">
-                    <span>📥</span> Export Data
+                <div id="lastSavedIndicator" class="last-saved">Data not yet saved</div>
+                <button class="btn btn-primary" onclick="exportData()" title="Download a backup file to keep your data safe">
+                    <span>💾</span> Download Backup
                 </button>
-                <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">
-                    <span>📤</span> Import Data
+                <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()" title="Restore data from a backup file">
+                    <span>📂</span> Restore from Backup
                 </button>
                 <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
             </div>

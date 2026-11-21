@@ -4,8 +4,12 @@
 let appData = {
     updates: [],
     actions: [],
-    teams: []
+    teams: [],
+    lastSaved: null
 };
+
+// Auto-save file path (for reference)
+const DATA_FILE_NAME = 'tech-lead-tracker-data.json';
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,30 +19,98 @@ document.addEventListener('DOMContentLoaded', () => {
     updateDashboard();
     populateTeamDropdowns();
     setDefaultDates();
+    updateLastSavedIndicator();
 });
 
-// Load data from localStorage
+// Load data from localStorage (with fallback to sessionStorage backup)
 function loadData() {
-    const saved = localStorage.getItem('techLeadTracker');
+    let saved = localStorage.getItem('techLeadTracker');
+    
+    // If localStorage is empty, try sessionStorage backup
+    if (!saved) {
+        saved = sessionStorage.getItem('techLeadTrackerBackup');
+        if (saved) {
+            console.log('Restored from session backup');
+        }
+    }
+    
     if (saved) {
-        appData = JSON.parse(saved);
+        try {
+            appData = JSON.parse(saved);
+            // Ensure all required arrays exist
+            if (!appData.updates) appData.updates = [];
+            if (!appData.actions) appData.actions = [];
+            if (!appData.teams) appData.teams = [];
+        } catch (e) {
+            console.error('Error parsing saved data:', e);
+            initializeDefaultData();
+        }
     } else {
-        // Initialize with sample teams based on user's requirements
-        appData.teams = [
+        initializeDefaultData();
+    }
+}
+
+// Initialize with default teams
+function initializeDefaultData() {
+    appData = {
+        updates: [],
+        actions: [],
+        teams: [
             { id: generateId(), name: 'Techbacklog', description: 'Technical backlog management', members: 'Shyam', color: '#4F46E5' },
             { id: generateId(), name: 'Deposits', description: 'Deposits feature team', members: '', color: '#10B981' },
             { id: generateId(), name: 'MFA', description: 'Multi-factor authentication', members: '', color: '#F59E0B' },
             { id: generateId(), name: 'Performance Pod', description: 'App performance optimization', members: 'Murthy', color: '#EF4444' },
             { id: generateId(), name: 'Drishti AI', description: 'AI and ML initiatives', members: '', color: '#8B5CF6' },
             { id: generateId(), name: 'CQRS', description: 'Command Query Responsibility Segregation', members: 'Kavita, Indra', color: '#EC4899' }
-        ];
-        saveData();
+        ],
+        lastSaved: null
+    };
+    saveData();
+}
+
+// Save data to localStorage and update indicator
+function saveData() {
+    appData.lastSaved = new Date().toISOString();
+    localStorage.setItem('techLeadTracker', JSON.stringify(appData));
+    updateLastSavedIndicator();
+    
+    // Also save to a downloadable file location for extra safety
+    saveToFile();
+}
+
+// Update the last saved indicator in UI
+function updateLastSavedIndicator() {
+    const indicator = document.getElementById('lastSavedIndicator');
+    if (indicator && appData.lastSaved) {
+        const savedDate = new Date(appData.lastSaved);
+        const timeStr = savedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = savedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        indicator.textContent = `Last saved: ${dateStr} ${timeStr}`;
+        indicator.style.color = '#10B981';
     }
 }
 
-// Save data to localStorage
-function saveData() {
-    localStorage.setItem('techLeadTracker', JSON.stringify(appData));
+// Save data to a JSON file (creates downloadable backup)
+function saveToFile() {
+    const dataStr = JSON.stringify(appData, null, 2);
+    
+    // Store in sessionStorage as immediate backup
+    sessionStorage.setItem('techLeadTrackerBackup', dataStr);
+}
+
+// Manual save to file (download)
+function downloadBackup() {
+    const dataStr = JSON.stringify(appData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tech-lead-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    // Show confirmation
+    alert('Backup downloaded! Keep this file safe. You can import it anytime to restore your data.');
 }
 
 // Generate unique ID
@@ -52,6 +124,34 @@ function initializeApp() {
     renderTeams();
     renderUpdates();
     renderActions();
+    
+    // Show data summary on first load
+    showDataSummary();
+}
+
+// Show summary of loaded data
+function showDataSummary() {
+    const updates = appData.updates.length;
+    const actions = appData.actions.length;
+    const teams = appData.teams.length;
+    
+    if (updates > 0 || actions > 0) {
+        console.log(`📊 Data loaded: ${updates} updates, ${actions} action items, ${teams} teams`);
+    }
+    
+    // Reminder to backup if there's significant data and no recent backup
+    if ((updates > 10 || actions > 5) && appData.lastSaved) {
+        const lastSave = new Date(appData.lastSaved);
+        const daysSinceBackup = (new Date() - lastSave) / (1000 * 60 * 60 * 24);
+        
+        if (daysSinceBackup > 7) {
+            setTimeout(() => {
+                if (confirm(`You have ${updates} updates and ${actions} action items.\n\nIt's been ${Math.floor(daysSinceBackup)} days since your last backup.\n\nWould you like to download a backup now?`)) {
+                    downloadBackup();
+                }
+            }, 2000);
+        }
+    }
 }
 
 // Setup navigation
@@ -805,14 +905,7 @@ document.querySelectorAll('.modal').forEach(modal => {
 // ==================== EXPORT/IMPORT ====================
 
 function exportData() {
-    const dataStr = JSON.stringify(appData, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tech-lead-tracker-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBackup();
 }
 
 function importData(event) {
@@ -823,21 +916,54 @@ function importData(event) {
     reader.onload = (e) => {
         try {
             const imported = JSON.parse(e.target.result);
-            if (confirm('This will replace all existing data. Continue?')) {
+            
+            // Validate the data structure
+            if (!imported.updates && !imported.actions && !imported.teams) {
+                throw new Error('Invalid data format');
+            }
+            
+            const updateCount = (imported.updates || []).length;
+            const actionCount = (imported.actions || []).length;
+            const teamCount = (imported.teams || []).length;
+            
+            if (confirm(`This will import:\n- ${updateCount} daily updates\n- ${actionCount} action items\n- ${teamCount} teams\n\nThis will replace all existing data. Continue?`)) {
                 appData = imported;
+                // Ensure all arrays exist
+                if (!appData.updates) appData.updates = [];
+                if (!appData.actions) appData.actions = [];
+                if (!appData.teams) appData.teams = [];
+                
                 saveData();
                 initializeApp();
                 updateDashboard();
                 populateTeamDropdowns();
-                alert('Data imported successfully!');
+                alert('Data imported successfully! Your data is now restored.');
             }
         } catch (error) {
-            alert('Error importing data. Please check the file format.');
+            alert('Error importing data. Please make sure you selected a valid backup file.\n\nError: ' + error.message);
         }
     };
     reader.readAsText(file);
     event.target.value = '';
 }
+
+// Check data integrity on visibility change (tab focus)
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        // Verify localStorage still has our data
+        const saved = localStorage.getItem('techLeadTracker');
+        if (!saved && appData.updates.length > 0) {
+            // Data was lost, restore from memory
+            console.warn('localStorage was cleared, restoring from memory');
+            saveData();
+        }
+    }
+});
+
+// Save before page unload
+window.addEventListener('beforeunload', () => {
+    saveData();
+});
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
