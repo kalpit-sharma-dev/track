@@ -387,10 +387,26 @@ function parseStructuredImport(text) {
     return result;
 }
 
+const COLOR_NAMES = {
+    red: '#EF4444',
+    green: '#10B981',
+    orange: '#F59E0B',
+    amber: '#F59E0B',
+    blue: '#4F46E5',
+    indigo: '#4F46E5',
+    purple: '#8B5CF6',
+    violet: '#8B5CF6',
+    pink: '#EC4899',
+    teal: '#14B8A6',
+    sky: '#0EA5E9',
+    'light blue': '#0EA5E9'
+};
+
 function normalizeColor(value) {
     if (!value) return '#6366F1';
     const color = value.trim();
-    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color : '#6366F1';
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) return color;
+    return COLOR_NAMES[color.toLowerCase()] || '#6366F1';
 }
 
 function normalizeCategory(value) {
@@ -534,10 +550,12 @@ const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace 
 # Urgent: High, Medium, Low
 # Status: Pending, In progress, Blocked, Done
 # Repeats: Daily, Weekly, Biweekly, Monthly
-# Color is a code such as #EF4444
+# Color: Red, Green, Orange, Blue, Purple, Pink, Teal, or Sky.
+# Leave Color out and the app picks one.
+# A team already in the app keeps its color. Open Teams in the app to see it.
 
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: #EF4444
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red
 
 17 Nov 2026
 - Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring

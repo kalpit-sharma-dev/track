@@ -325,7 +325,7 @@ Use **Upload Notes** when the day is already written in a text file. This **adds
 
 ```
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: #EF4444
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red
 
 17 Nov 2026
 - Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring
@@ -353,7 +353,7 @@ A date and a dashed line are enough. Add the words after `|` when you have them:
 | --- | --- |
 | `People:` or `Who:` | The person, or several names separated by commas |
 | `About:` | A short line about the team |
-| `Color:` | A color code such as `#EF4444` |
+| `Color:` | Red, Green, Orange, Blue, Purple, Pink, Teal, or Sky |
 | `Team:` | The same team name on every update and task |
 | `Type:` | Meeting, Discussion, PR review, Approval, Audit, Planning, Issue, or Other |
 | `Tags:` | Words separated by commas, such as `golang, monitoring` |
@@ -364,7 +364,18 @@ A date and a dashed line are enough. Add the words after `|` when you have them:
 | `Notes:` | Extra detail for a task |
 | `Repeats:` | Daily, Weekly, Biweekly, or Monthly |
 
-`17 Nov` is enough for the date. The app uses the current year. A task with no `Who:` is saved under your name, Me. A new team picks up `About:` and `Color:`. A team already in the app keeps the about text and color it already has.
+`17 Nov` is enough for the date. The app uses the current year. A task with no `Who:` is saved under your name, Me. A new team picks up `About:` and `Color:`. Leave `Color:` out and the app picks one. A team already in the app keeps the about text and color it already has. Open **Teams** to see that color.
+
+The teams already in the app use these colors:
+
+| Team | Color |
+| --- | --- |
+| Techbacklog | Blue |
+| Deposits | Green |
+| MFA | Orange |
+| Performance Pod | Red |
+| Drishti AI | Purple |
+| CQRS | Pink |
 
 | If this already exists | What upload does |
 | --- | --- |

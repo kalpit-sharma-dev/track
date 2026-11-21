@@ -19,10 +19,12 @@
 # Urgent: High, Medium, Low
 # Status: Pending, In progress, Blocked, Done
 # Repeats: Daily, Weekly, Biweekly, Monthly
-# Color is a code such as #EF4444
+# Color: Red, Green, Orange, Blue, Purple, Pink, Teal, or Sky.
+# Leave Color out and the app picks one.
+# A team already in the app keeps its color. Open Teams in the app to see it.
 
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: #EF4444
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red
 
 17 Nov 2026
 - Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring

@@ -6,6 +6,18 @@ assert.strictEqual(parseFlexibleDate('17 Nov 2026'), '2026-11-17');
 assert.strictEqual(parseFlexibleDate('17/11/2026'), '2026-11-17');
 assert.strictEqual(parseFlexibleDate('not a date'), null);
 
+const namedColors = parseTextImport([
+    'Teams',
+    '- Deposits | Color: Green',
+    '- MFA | Color: orange',
+    '- Drishti AI | Color: Purple',
+    '- CQRS | Color: Pink',
+    '- Techbacklog | Color: Blue'
+].join('\n'));
+assert.deepStrictEqual(namedColors.teams.map(team => team.color), [
+    '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#4F46E5'
+]);
+
 const parsed = parseTextImport(IMPORT_TEMPLATE);
 assert.strictEqual(parsed.errors.length, 0, parsed.errors.join('\n'));
 assert.strictEqual(parsed.teams.length, 1);
