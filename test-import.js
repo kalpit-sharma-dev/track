@@ -17,8 +17,9 @@ assert.strictEqual(parsed.updates[2].category, 'audit');
 assert.deepStrictEqual(parsed.updates[0].tags, ['golang', 'monitoring']);
 assert.strictEqual(parsed.actions.length, 2);
 assert.strictEqual(parsed.actions[0].jira, 'RITM8019234');
+assert.strictEqual(parsed.actions[0].title, 'Set up SonarQube on Jenkins');
 assert.strictEqual(parsed.actions[1].status, 'in-progress');
-assert.strictEqual(parsed.actions[1].recurring, 'weekly');
+assert.strictEqual(parsed.actions[1].owner, 'Shyam');
 
 const existing = {
     teams: [{ name: 'Performance Pod', members: 'Murthy' }],
@@ -35,7 +36,25 @@ assert.strictEqual(plan.newUpdates.length, 2);
 assert.strictEqual(plan.skippedUpdates, 1);
 assert.strictEqual(plan.newActions.length, 1);
 assert.strictEqual(plan.skippedActions, 1);
-assert.strictEqual(plan.newActions[0].title, 'SonarQube Setup Jenkins');
+assert.strictEqual(plan.newActions[0].title, 'Set up SonarQube on Jenkins');
+
+const oldFormat = parseTextImport([
+    '=== UPDATES ===',
+    'DATE: 17 Nov',
+    'TEXT: A note without a year',
+    '---',
+    '=== ACTIONS ===',
+    'TITLE: Chase the ticket',
+    'OWNER: Me',
+    '---'
+].join('\n'));
+assert.strictEqual(oldFormat.errors.length, 0, oldFormat.errors.join('\n'));
+assert.strictEqual(oldFormat.updates[0].date, `${new Date().getFullYear()}-11-17`);
+assert.strictEqual(oldFormat.actions[0].owner, 'Me');
+
+const plain = parseTextImport('17 Nov 2026\nForgot the dash but still wrote the note\n');
+assert.strictEqual(plain.errors.length, 0, plain.errors.join('\n'));
+assert.strictEqual(plain.updates[0].description, 'Forgot the dash but still wrote the note');
 
 const again = planTextImport({
     teams: existing.teams.concat([{ name: 'Drishti AI', members: '' }]),

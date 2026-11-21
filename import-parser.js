@@ -76,6 +76,15 @@ function parseFlexibleDate(input) {
         return ymd(year, month, day);
     }
 
+    match = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})$/);
+    if (match) {
+        const month = MONTHS[match[2].slice(0, 3).toLowerCase()];
+        const day = Number(match[1]);
+        const year = new Date().getFullYear();
+        if (month === undefined || day < 1 || day > 31) return null;
+        return ymd(year, month, day);
+    }
+
     match = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
     if (match) {
         const day = Number(match[1]);
@@ -110,6 +119,159 @@ function parseBlock(lines) {
 }
 
 function parseTextImport(text) {
+    const source = String(text || '');
+    if (!/^===\s*(TEAMS|UPDATES|ACTIONS)\s*===\s*$/im.test(source)) {
+        return parseSimpleNotes(source);
+    }
+    return parseStructuredImport(source);
+}
+
+function parseSimpleNotes(text) {
+    const result = { teams: [], updates: [], actions: [], errors: [] };
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    let mode = 'notes';
+    let currentDate = null;
+
+    lines.forEach((line, index) => {
+        const lineNo = index + 1;
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+
+        const heading = trimmed.replace(/:$/, '').toLowerCase();
+        if (['tasks', 'task', 'to do', 'action items', 'actions'].includes(heading)) {
+            mode = 'tasks';
+            return;
+        }
+        if (heading === 'teams' || heading === 'team') {
+            mode = 'teams';
+            return;
+        }
+        if (['notes', 'updates', 'what happened'].includes(heading)) {
+            mode = 'notes';
+            return;
+        }
+
+        const dateLabel = trimmed.match(/^date:\s*(.+)$/i);
+        const date = parseFlexibleDate(dateLabel ? dateLabel[1] : trimmed);
+        if (date && !/^[-*•]/.test(trimmed)) {
+            currentDate = date;
+            mode = 'notes';
+            return;
+        }
+
+        const bullet = trimmed.match(/^[-*•]\s+(.*)$/);
+        const content = bullet ? bullet[1].trim() : trimmed;
+        if (!content) return;
+        const parsedLine = splitSimpleDetails(content);
+
+        if (mode === 'teams') {
+            if (!parsedLine.text) {
+                result.errors.push(`Line ${lineNo}: write the team name before the | mark.`);
+                return;
+            }
+            result.teams.push({
+                line: lineNo,
+                name: parsedLine.text,
+                description: '',
+                members: parsedLine.details.people || '',
+                color: '#6366F1'
+            });
+            return;
+        }
+
+        if (mode === 'tasks') {
+            if (!parsedLine.text) {
+                result.errors.push(`Line ${lineNo}: write the task before the | mark.`);
+                return;
+            }
+            const due = parsedLine.details.due ? parseFlexibleDate(parsedLine.details.due) : '';
+            if (parsedLine.details.due && !due) {
+                result.errors.push(`Line ${lineNo}: the due date "${parsedLine.details.due}" could not be read. Use 21 Nov 2026.`);
+                return;
+            }
+            result.actions.push({
+                line: lineNo,
+                title: parsedLine.text,
+                description: parsedLine.details.notes || '',
+                owner: parsedLine.details.who || 'Me',
+                priority: normalizePriority(parsedLine.details.urgent),
+                status: normalizeStatus(parsedLine.details.status),
+                dueDate: due || '',
+                teamName: parsedLine.details.team || '',
+                jira: parsedLine.details.ticket || '',
+                recurring: normalizeRecurring(parsedLine.details.repeats),
+                notes: parsedLine.details.notes || ''
+            });
+            return;
+        }
+
+        if (!currentDate) {
+            result.errors.push(`Line ${lineNo}: write a date first, on its own line, such as 17 Nov 2026.`);
+            return;
+        }
+        const category = guessCategory(parsedLine.text, parsedLine.details.type);
+        result.updates.push({
+            line: lineNo,
+            date: currentDate,
+            category: category.value,
+            categoryWarning: category.warning,
+            teamName: parsedLine.details.team || '',
+            people: parsedLine.details.people || '',
+            tags: splitList(parsedLine.details.tags).map(tag => tag.toLowerCase()),
+            description: parsedLine.text
+        });
+    });
+
+    return result;
+}
+
+const SIMPLE_DETAIL_KEYS = {
+    team: 'team',
+    people: 'people',
+    with: 'people',
+    type: 'type',
+    category: 'type',
+    tags: 'tags',
+    who: 'who',
+    owner: 'who',
+    urgent: 'urgent',
+    priority: 'urgent',
+    due: 'due',
+    ticket: 'ticket',
+    jira: 'ticket',
+    status: 'status',
+    notes: 'notes',
+    repeats: 'repeats',
+    repeat: 'repeats'
+};
+
+function splitSimpleDetails(content) {
+    const details = {};
+    const textParts = [];
+    content.split('|').forEach(part => {
+        const piece = part.trim();
+        if (!piece) return;
+        const match = piece.match(/^([A-Za-z ]{2,20}):\s*(.*)$/);
+        const key = match ? SIMPLE_DETAIL_KEYS[match[1].trim().toLowerCase()] : null;
+        if (key) details[key] = match[2].trim();
+        else textParts.push(piece);
+    });
+    return { text: textParts.join(' '), details };
+}
+
+function guessCategory(text, explicit) {
+    if (explicit && explicit.trim()) return normalizeCategory(explicit);
+    const value = text.toLowerCase();
+    if (/\b(pr|pull request|code review)\b/.test(value) || value.includes('pull requests')) return { value: 'review', warning: '' };
+    if (/\baudit\b/.test(value)) return { value: 'audit', warning: '' };
+    if (/\b(meeting|call)\b/.test(value)) return { value: 'meeting', warning: '' };
+    if (/\bapprov/.test(value)) return { value: 'approval', warning: '' };
+    if (/\b(plan|planning)\b/.test(value)) return { value: 'planning', warning: '' };
+    if (/\b(issue|bug|error)\b/.test(value)) return { value: 'issue', warning: '' };
+    return { value: 'discussion', warning: '' };
+}
+
+function parseStructuredImport(text) {
     const result = { teams: [], updates: [], actions: [], errors: [] };
     const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     let section = null;
@@ -348,66 +510,33 @@ function planTextImport(data, parsed) {
     return plan;
 }
 
-const IMPORT_TEMPLATE = `# Tech Lead Daily Tracker notes
-# Lines starting with # are comments.
-# Use one of these section headings: === TEAMS ===, === UPDATES ===, === ACTIONS ===
-# Separate each record with a line that contains only ---
-# Uploading this file ADDS data. It never changes or deletes what is already saved.
-# An update already saved for the same date and text is skipped.
-# An action with the same title and owner is skipped.
-# An existing team keeps its name, description, and color. New member names are added.
+const IMPORT_TEMPLATE = `# Daily notes
+#
+# How to fill this in
+# 1. Write the date on its own line, such as 17 Nov 2026. The year is optional.
+# 2. Write a dash, then what you did.
+# 3. Under Tasks, write a dash and the task. Add Who: and the person's name.
+# 4. Extra details are optional. Add them after a | mark.
+#    Team:    People:    Type:    Urgent:    Due:    Ticket:
+# 5. Save this file, then click Upload Notes in the app.
+#    Upload adds these notes. It does not change notes you already saved.
+# 6. Delete the sample lines and write your own.
 
-=== TEAMS ===
-NAME: Performance Pod
-DESCRIPTION: App performance and reliability
-MEMBERS: Murthy, Rajesh
-COLOR: #EF4444
----
+Teams
+- Performance Pod | People: Murthy, Rajesh
 
-=== UPDATES ===
-DATE: 17 Nov 2026
-CATEGORY: discussion
-TEAM: Performance Pod
-PEOPLE: Murthy, Rajesh
-TAGS: golang, monitoring
-TEXT: DT is not able to monitor golang services due to entry point change, so I discussed it with the perf SRE team.
----
-DATE: 2026-11-18
-CATEGORY: review
-TEAM: Drishti AI
-PEOPLE: Chandan
-TAGS: pr
-TEXT: Reviewed 4-5 pull requests for AI Banking.
----
-DATE: 19/11/2026
-CATEGORY: audit
-TEAM: 
-PEOPLE: Saman
-TAGS: checkmarx, r12
-TEXT: Checkmarx discussion with Saman and team for fixing the R12 Go and Java vulnerability.
----
+17 Nov 2026
+- Talked with the perf SRE team about golang monitoring | Team: Performance Pod | People: Murthy, Rajesh | Tags: golang, monitoring
 
-=== ACTIONS ===
-TITLE: SonarQube Setup Jenkins
-OWNER: Pratap, Adhika, Chandan
-PRIORITY: high
-STATUS: pending
-TEAM: Drishti AI
-DUE: 25 Nov 2026
-JIRA: RITM8019234
-RECURRING:
-NOTES: Pratap, Adhika, and Chandan to test this and share the result.
----
-TITLE: Priority for tech backlog
-OWNER: Shyam
-PRIORITY: high
-STATUS: in progress
-TEAM: Techbacklog
-DUE: 2026-11-21
-JIRA:
-RECURRING: weekly
-NOTES: Discuss priority for the tech backlog with Shyam.
----
+18 Nov 2026
+- Reviewed 4-5 pull requests for AI Banking | Team: Drishti AI | Type: PR review | People: Chandan
+
+19 Nov 2026
+- Checkmarx discussion with Saman for the R12 release | Type: Audit | People: Saman
+
+Tasks
+- Set up SonarQube on Jenkins | Who: Pratap, Adhika, Chandan | Ticket: RITM8019234 | Team: Drishti AI | Due: 25 Nov 2026
+- Priority for tech backlog | Who: Shyam | Urgent: High | Due: 21 Nov 2026 | Status: In progress
 `;
 
 if (typeof module !== 'undefined' && module.exports) {

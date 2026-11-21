@@ -1,60 +1,27 @@
-# Tech Lead Daily Tracker notes
-# Lines starting with # are comments.
-# Use one of these section headings: === TEAMS ===, === UPDATES ===, === ACTIONS ===
-# Separate each record with a line that contains only ---
-# Uploading this file ADDS data. It never changes or deletes what is already saved.
-# An update already saved for the same date and text is skipped.
-# An action with the same title and owner is skipped.
-# An existing team keeps its name, description, and color. New member names are added.
+# Daily notes
+#
+# How to fill this in
+# 1. Write the date on its own line, such as 17 Nov 2026. The year is optional.
+# 2. Write a dash, then what you did.
+# 3. Under Tasks, write a dash and the task. Add Who: and the person's name.
+# 4. Extra details are optional. Add them after a | mark.
+#    Team:    People:    Type:    Urgent:    Due:    Ticket:
+# 5. Save this file, then click Upload Notes in the app.
+#    Upload adds these notes. It does not change notes you already saved.
+# 6. Delete the sample lines and write your own.
 
-=== TEAMS ===
-NAME: Performance Pod
-DESCRIPTION: App performance and reliability
-MEMBERS: Murthy, Rajesh
-COLOR: #EF4444
----
+Teams
+- Performance Pod | People: Murthy, Rajesh
 
-=== UPDATES ===
-DATE: 17 Nov 2026
-CATEGORY: discussion
-TEAM: Performance Pod
-PEOPLE: Murthy, Rajesh
-TAGS: golang, monitoring
-TEXT: DT is not able to monitor golang services due to entry point change, so I discussed it with the perf SRE team.
----
-DATE: 2026-11-18
-CATEGORY: review
-TEAM: Drishti AI
-PEOPLE: Chandan
-TAGS: pr
-TEXT: Reviewed 4-5 pull requests for AI Banking.
----
-DATE: 19/11/2026
-CATEGORY: audit
-TEAM: 
-PEOPLE: Saman
-TAGS: checkmarx, r12
-TEXT: Checkmarx discussion with Saman and team for fixing the R12 Go and Java vulnerability.
----
+17 Nov 2026
+- Talked with the perf SRE team about golang monitoring | Team: Performance Pod | People: Murthy, Rajesh | Tags: golang, monitoring
 
-=== ACTIONS ===
-TITLE: SonarQube Setup Jenkins
-OWNER: Pratap, Adhika, Chandan
-PRIORITY: high
-STATUS: pending
-TEAM: Drishti AI
-DUE: 25 Nov 2026
-JIRA: RITM8019234
-RECURRING:
-NOTES: Pratap, Adhika, and Chandan to test this and share the result.
----
-TITLE: Priority for tech backlog
-OWNER: Shyam
-PRIORITY: high
-STATUS: in progress
-TEAM: Techbacklog
-DUE: 2026-11-21
-JIRA:
-RECURRING: weekly
-NOTES: Discuss priority for the tech backlog with Shyam.
----
+18 Nov 2026
+- Reviewed 4-5 pull requests for AI Banking | Team: Drishti AI | Type: PR review | People: Chandan
+
+19 Nov 2026
+- Checkmarx discussion with Saman for the R12 release | Type: Audit | People: Saman
+
+Tasks
+- Set up SonarQube on Jenkins | Who: Pratap, Adhika, Chandan | Ticket: RITM8019234 | Team: Drishti AI | Due: 25 Nov 2026
+- Priority for tech backlog | Who: Shyam | Urgent: High | Due: 21 Nov 2026 | Status: In progress

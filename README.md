@@ -316,51 +316,45 @@ Long lists of daily updates and action items also load in pages, so a year of no
 
 ## Upload notes from a text file
 
-Use **Upload Notes** in the sidebar when you already wrote the day in a text file. This **adds** records. It does not change or delete anything already in the app.
+Use **Upload Notes** when the day is already written in a text file. This **adds** records. It does not change or delete anything already in the app.
 
-1. Click **Notes Template** and save `daily-tracker-notes-template.txt`.
-2. Fill in teams, daily updates, and action items. Separate each record with a line that contains only `---`.
-3. Click **Upload Notes** and choose that `.txt` file.
-4. Review the counts, then confirm. A second upload of the same file skips rows that are already saved.
-
-Dates can be `2026-11-17`, `17 Nov 2026`, or `17/11/2026`.
+1. Click **Notes Template** and open the downloaded text file.
+2. Delete the sample lines and type your own notes. A date goes on its own line. Each thing you did starts with a dash.
+3. Click **Upload Notes** and choose that file.
+4. Check the counts, then confirm. Uploading the same notes again skips the lines that are already saved.
 
 ```
-=== TEAMS ===
-NAME: Performance Pod
-DESCRIPTION: App performance and reliability
-MEMBERS: Murthy, Rajesh
-COLOR: #EF4444
----
+Teams
+- Performance Pod | People: Murthy, Rajesh
 
-=== UPDATES ===
-DATE: 17 Nov 2026
-CATEGORY: discussion
-TEAM: Performance Pod
-PEOPLE: Murthy, Rajesh
-TAGS: golang, monitoring
-TEXT: Discussed the golang monitoring gap with the perf SRE team.
----
+17 Nov 2026
+- Talked with Murthy about the MB app | Team: Performance Pod | People: Murthy
+- Reviewed the cost of the staggered bundle push
 
-=== ACTIONS ===
-TITLE: SonarQube Setup Jenkins
-OWNER: Pratap, Adhika, Chandan
-PRIORITY: high
-STATUS: pending
-TEAM: Drishti AI
-DUE: 25 Nov 2026
-JIRA: RITM8019234
-NOTES: Ask them to test and share the result.
----
+Tasks
+- Ask Shyam about the tech backlog | Who: Shyam | Urgent: High | Due: 21 Nov 2026
 ```
+
+You only need the date and the dashed lines. Add the words after `|` when you have them:
+
+| After the bar | What to write |
+| --- | --- |
+| `Team:` | Performance Pod, Deposits, MFA, Drishti AI |
+| `People:` or `Who:` | The person, or several names separated by commas |
+| `Type:` | Meeting, Discussion, PR review, Audit, Planning |
+| `Urgent:` | High, Medium, or Low |
+| `Due:` | 21 Nov 2026 |
+| `Ticket:` | RITM8019234 |
+
+`17 Nov` is enough for the date. The app uses the current year. A task with no `Who:` is saved under your name, Me.
 
 | If this already exists | What upload does |
 | --- | --- |
-| Same date and update text | Skips it |
-| Same action title and owner | Skips it |
-| Same team name | Keeps the team. Adds only member names that are not already listed |
+| Same date and same note | Skips it |
+| Same task and same person | Skips it |
+| Same team name | Keeps the team. Adds only new people |
 
-**Restore Backup** is different: that JSON file replaces the whole tracker. Use it only to restore a backup.
+**Restore Backup** replaces the whole tracker from a JSON backup. Use it only when you are putting a saved copy back.
 
 ## Analytics periods
 
