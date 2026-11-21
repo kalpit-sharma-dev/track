@@ -25,12 +25,15 @@ assert.strictEqual(parsed.teams[0].name, 'Performance Pod');
 assert.strictEqual(parsed.teams[0].description, 'App performance and reliability');
 assert.strictEqual(parsed.teams[0].members, 'Murthy, Rajesh');
 assert.strictEqual(parsed.teams[0].color, '#EF4444');
+assert.strictEqual(parsed.teams[0].targetDate, '2026-11-30');
 assert.strictEqual(parsed.updates.length, 7);
 assert.ok(parsed.updates.every(update => update.teamName === 'Performance Pod'));
 assert.deepStrictEqual(parsed.updates.map(update => update.category), [
     'discussion', 'meeting', 'review', 'approval', 'audit', 'planning', 'issue'
 ]);
 assert.deepStrictEqual(parsed.updates[0].tags, ['golang', 'monitoring']);
+assert.strictEqual(parsed.updates[0].targetDate, '2026-11-25');
+assert.strictEqual(parsed.updates[1].targetDate, '');
 assert.strictEqual(parsed.actions.length, 4);
 assert.ok(parsed.actions.every(action => action.teamName === 'Performance Pod'));
 assert.strictEqual(parsed.actions[0].jira, 'RITM8019234');
@@ -38,10 +41,21 @@ assert.strictEqual(parsed.actions[0].title, 'Fix golang service monitoring');
 assert.strictEqual(parsed.actions[0].status, 'in-progress');
 assert.strictEqual(parsed.actions[0].priority, 'high');
 assert.strictEqual(parsed.actions[0].recurring, 'weekly');
+assert.strictEqual(parsed.actions[0].dueDate, '2026-11-25');
 assert.ok(parsed.actions[0].notes.includes('dashboard link'));
 assert.strictEqual(parsed.actions[1].status, 'pending');
 assert.strictEqual(parsed.actions[2].status, 'blocked');
 assert.strictEqual(parsed.actions[3].status, 'completed');
+
+const targetTask = parseTextImport([
+    'Tasks',
+    '- Ship the report | Who: Kavita | Target: 2 Dec 2026'
+].join('\n'));
+assert.strictEqual(targetTask.errors.length, 0, targetTask.errors.join('\n'));
+assert.strictEqual(targetTask.actions[0].dueDate, '2026-12-02');
+const badTarget = parseTextImport('17 Nov 2026\n- A note | Target: someday');
+assert.strictEqual(badTarget.updates.length, 0);
+assert.ok(badTarget.errors[0].includes('target date'));
 
 const existing = {
     teams: [{ name: 'Performance Pod', members: 'Murthy' }],

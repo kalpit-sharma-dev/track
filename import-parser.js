@@ -5,7 +5,7 @@
 
 const IMPORT_FIELDS = [
     'NAME', 'DESCRIPTION', 'MEMBERS', 'COLOR',
-    'DATE', 'CATEGORY', 'TEAM', 'PEOPLE', 'TAGS', 'TEXT',
+    'DATE', 'CATEGORY', 'TEAM', 'PEOPLE', 'TAGS', 'TEXT', 'TARGET',
     'TITLE', 'OWNER', 'PRIORITY', 'STATUS', 'DUE', 'JIRA', 'RECURRING', 'NOTES'
 ];
 
@@ -45,6 +45,16 @@ const MONTHS = {
     jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
     jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
 };
+
+function readOptionalDate(raw, lineNo, errors) {
+    if (!raw) return '';
+    const date = parseFlexibleDate(raw);
+    if (!date) {
+        errors.push(`Line ${lineNo}: the target date "${raw}" could not be read. Use 21 Nov 2026.`);
+        return null;
+    }
+    return date;
+}
 
 function pad2(n) {
     return String(n).padStart(2, '0');
@@ -169,12 +179,15 @@ function parseSimpleNotes(text) {
                 result.errors.push(`Line ${lineNo}: write the team name before the | mark.`);
                 return;
             }
+            const targetDate = readOptionalDate(parsedLine.details.target, lineNo, result.errors);
+            if (targetDate === null) return;
             result.teams.push({
                 line: lineNo,
                 name: parsedLine.text,
                 description: parsedLine.details.about || '',
                 members: parsedLine.details.people || '',
-                color: normalizeColor(parsedLine.details.color)
+                color: normalizeColor(parsedLine.details.color),
+                targetDate: targetDate || ''
             });
             return;
         }
@@ -184,11 +197,9 @@ function parseSimpleNotes(text) {
                 result.errors.push(`Line ${lineNo}: write the task before the | mark.`);
                 return;
             }
-            const due = parsedLine.details.due ? parseFlexibleDate(parsedLine.details.due) : '';
-            if (parsedLine.details.due && !due) {
-                result.errors.push(`Line ${lineNo}: the due date "${parsedLine.details.due}" could not be read. Use 21 Nov 2026.`);
-                return;
-            }
+            const dueSource = parsedLine.details.target || parsedLine.details.due;
+            const due = readOptionalDate(dueSource, lineNo, result.errors);
+            if (due === null) return;
             result.actions.push({
                 line: lineNo,
                 title: parsedLine.text,
@@ -210,9 +221,12 @@ function parseSimpleNotes(text) {
             return;
         }
         const category = guessCategory(parsedLine.text, parsedLine.details.type);
+        const targetDate = readOptionalDate(parsedLine.details.target, lineNo, result.errors);
+        if (targetDate === null) return;
         result.updates.push({
             line: lineNo,
             date: currentDate,
+            targetDate: targetDate || '',
             category: category.value,
             categoryWarning: category.warning,
             teamName: parsedLine.details.team || '',
@@ -240,6 +254,8 @@ const SIMPLE_DETAIL_KEYS = {
     urgent: 'urgent',
     priority: 'urgent',
     due: 'due',
+    target: 'target',
+    'target date': 'target',
     ticket: 'ticket',
     jira: 'ticket',
     status: 'status',
@@ -297,12 +313,15 @@ function parseStructuredImport(text) {
                 result.errors.push(`Line ${start}: team block is missing NAME.`);
                 return;
             }
+            const teamTarget = readOptionalDate(fields.TARGET, start, result.errors);
+            if (teamTarget === null) return;
             result.teams.push({
                 line: start,
                 name: fields.NAME,
                 description: fields.DESCRIPTION || '',
                 members: fields.MEMBERS || '',
-                color: normalizeColor(fields.COLOR)
+                color: normalizeColor(fields.COLOR),
+                targetDate: teamTarget || ''
             });
             return;
         }
@@ -318,9 +337,12 @@ function parseStructuredImport(text) {
                 return;
             }
             const category = normalizeCategory(fields.CATEGORY);
+            const targetDate = readOptionalDate(fields.TARGET, start, result.errors);
+            if (targetDate === null) return;
             result.updates.push({
                 line: start,
                 date,
+                targetDate: targetDate || '',
                 category: category.value,
                 categoryWarning: category.warning,
                 teamName: fields.TEAM || '',
@@ -340,11 +362,8 @@ function parseStructuredImport(text) {
                 result.errors.push(`Line ${start}: action "${fields.TITLE}" is missing OWNER.`);
                 return;
             }
-            const due = fields.DUE ? parseFlexibleDate(fields.DUE) : '';
-            if (fields.DUE && !due) {
-                result.errors.push(`Line ${start}: action "${fields.TITLE}" has a DUE date that could not be read.`);
-                return;
-            }
+            const due = readOptionalDate(fields.TARGET || fields.DUE, start, result.errors);
+            if (due === null) return;
             result.actions.push({
                 line: start,
                 title: fields.TITLE,
@@ -542,9 +561,9 @@ const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace 
 #    A team that is already in the app keeps its name, about, and color.
 #    New people on that team are added.
 #
-# Team labels:   People:   About:   Color:
-# Update labels: Team:   People:   Type:   Tags:
-# Task labels:   Who:   Team:   Urgent:   Status:   Due:   Ticket:   Notes:   Repeats:
+# Team labels:   People:   About:   Color:   Target:
+# Update labels: Team:   People:   Type:   Tags:   Target:
+# Task labels:   Who:   Team:   Urgent:   Status:   Due:   Target:   Ticket:   Notes:   Repeats:
 #
 # Type: Meeting, Discussion, PR review, Approval, Audit, Planning, Issue, Other
 # Urgent: High, Medium, Low
@@ -555,10 +574,10 @@ const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace 
 # A team already in the app keeps its color. Open Teams in the app to see it.
 
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026
 
 17 Nov 2026
-- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring
+- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026
 - Morning sync on the MB app slow screens | Team: Performance Pod | People: Murthy | Type: Meeting | Tags: mb app
 
 18 Nov 2026

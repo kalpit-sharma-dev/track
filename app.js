@@ -117,6 +117,7 @@ function ensureDataShape() {
         if (!Array.isArray(update.tags)) update.tags = [];
         if (!update.description) update.description = '';
         if (!update.people) update.people = '';
+        if (!update.targetDate) update.targetDate = '';
     });
     appData.actions.forEach(action => {
         if (!action.priority) action.priority = 'medium';
@@ -126,6 +127,7 @@ function ensureDataShape() {
     });
     appData.teams.forEach(team => {
         team.color = safeColor(team.color);
+        if (!team.targetDate) team.targetDate = '';
     });
 }
 
@@ -183,7 +185,9 @@ function buildSearchIndex() {
             id: update.id,
             haystack: searchText([
                 update.description, update.people, update.category,
-                ...(update.tags || []), update.date, dateText, team?.name
+                ...(update.tags || []), update.date, dateText, update.targetDate,
+                update.targetDate ? `${formatDate(update.targetDate)} ${formatDate(update.targetDate, 'short')}` : '',
+                team?.name
             ]),
             update,
             teamName: team?.name || ''
@@ -210,7 +214,10 @@ function buildSearchIndex() {
         rows.push({
             type: 'team',
             id: team.id,
-            haystack: searchText([team.name, team.description, team.members]),
+            haystack: searchText([
+                team.name, team.description, team.members, team.targetDate,
+                team.targetDate ? `${formatDate(team.targetDate)} ${formatDate(team.targetDate, 'short')}` : ''
+            ]),
             team
         });
     });
@@ -287,6 +294,7 @@ function renderSearchResults(results, query) {
                     ${formatDate(row.update.date, 'short')} • ${escapeHtml(row.update.category)}
                     ${row.teamName ? ` • ${escapeHtml(row.teamName)}` : ''}
                     ${row.update.people ? ` • ${escapeHtml(row.update.people)}` : ''}
+                    ${row.update.targetDate ? ` • Target ${formatDate(row.update.targetDate, 'short')}` : ''}
                 </div>
             </div>
         `)}
@@ -295,6 +303,7 @@ function renderSearchResults(results, query) {
                 <strong>${highlightText(row.action.title, query)}</strong>
                 <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
                     Owner: ${escapeHtml(row.action.owner)} • ${escapeHtml(row.action.status)} • ${escapeHtml(row.action.priority)}
+                    ${row.action.dueDate ? ` • Target ${formatDate(row.action.dueDate, 'short')}` : ''}
                     ${row.action.jira ? ` • ${escapeHtml(row.action.jira)}` : ''}
                     ${row.teamName ? ` • ${escapeHtml(row.teamName)}` : ''}
                 </div>
@@ -305,6 +314,7 @@ function renderSearchResults(results, query) {
                 <strong>${highlightText(row.team.name, query)}</strong>
                 <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
                     ${escapeHtml(row.team.members || row.team.description || 'No members listed')}
+                    ${row.team.targetDate ? ` • Target ${formatDate(row.team.targetDate, 'short')}` : ''}
                 </div>
             </div>
         `)}
@@ -612,6 +622,7 @@ function saveUpdate(event) {
     const update = {
         id: generateId(),
         date: document.getElementById('updateDate').value,
+        targetDate: document.getElementById('updateTargetDate').value,
         category: document.getElementById('updateCategory').value,
         teamId: document.getElementById('updateTeam').value,
         description: document.getElementById('updateDescription').value,
@@ -724,6 +735,7 @@ function renderUpdates(filteredUpdates = null) {
                         </div>
                     </div>
                     <p class="update-description">${escapeHtml(update.description)}</p>
+                    ${update.targetDate ? `<p class="target-date">Target ${escapeHtml(formatDate(update.targetDate))}</p>` : ''}
                     ${update.people ? `<p class="update-people"><strong>With:</strong> ${escapeHtml(update.people)}</p>` : ''}
                     ${tagsHtml}
                 </div>
@@ -755,6 +767,7 @@ function openEditUpdateModal(id) {
     
     document.getElementById('editUpdateId').value = update.id;
     document.getElementById('editUpdateDate').value = update.date;
+    document.getElementById('editUpdateTargetDate').value = update.targetDate || '';
     document.getElementById('editUpdateCategory').value = update.category;
     document.getElementById('editUpdateDescription').value = update.description;
     document.getElementById('editUpdatePeople').value = update.people || '';
@@ -782,6 +795,7 @@ function updateUpdate(event) {
     const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t) : [];
     
     update.date = document.getElementById('editUpdateDate').value;
+    update.targetDate = document.getElementById('editUpdateTargetDate').value;
     update.category = document.getElementById('editUpdateCategory').value;
     update.teamId = document.getElementById('editUpdateTeam').value;
     update.description = document.getElementById('editUpdateDescription').value;
@@ -1014,13 +1028,13 @@ function renderActions(filteredActions = null) {
             let dueText = '';
             if (action.dueDate) {
                 if (isOverdue) {
-                    dueText = `⚠️ Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? 's' : ''}`;
+                    dueText = `🎯 Target overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? 's' : ''}`;
                 } else if (daysUntilDue === 0) {
-                    dueText = '📅 Due today';
+                    dueText = '🎯 Target today';
                 } else if (daysUntilDue === 1) {
-                    dueText = '📅 Due tomorrow';
+                    dueText = '🎯 Target tomorrow';
                 } else {
-                    dueText = `📅 ${formatDate(action.dueDate, 'short')}`;
+                    dueText = `🎯 Target ${formatDate(action.dueDate, 'short')}`;
                 }
             }
             
@@ -1182,6 +1196,7 @@ function saveTeam(event) {
         name: document.getElementById('teamName').value,
         description: document.getElementById('teamDescription').value,
         members: document.getElementById('teamMembers').value,
+        targetDate: document.getElementById('teamTargetDate').value,
         color: document.getElementById('teamColor').value
     };
     
@@ -1226,6 +1241,7 @@ function renderTeams() {
                     <div class="team-members">
                         <strong>Members:</strong> <span>${escapeHtml(team.members || 'Not specified')}</span>
                     </div>
+                    ${team.targetDate ? `<p class="target-date">Target ${escapeHtml(formatDate(team.targetDate))}</p>` : ''}
                     <div class="team-actions">
                         <button class="btn btn-small btn-primary" onclick="openEditTeamModal('${team.id}')">✏️ Edit</button>
                         <button class="btn btn-small btn-secondary" onclick="deleteTeam('${team.id}')">🗑️ Delete</button>
@@ -1254,6 +1270,7 @@ function openEditTeamModal(id) {
     document.getElementById('editTeamName').value = team.name;
     document.getElementById('editTeamDescription').value = team.description || '';
     document.getElementById('editTeamMembers').value = team.members || '';
+    document.getElementById('editTeamTargetDate').value = team.targetDate || '';
     document.getElementById('editTeamColor').value = team.color || '#4F46E5';
     
     openModal('editTeamModal');
@@ -1269,6 +1286,7 @@ function updateTeam(event) {
     team.name = document.getElementById('editTeamName').value;
     team.description = document.getElementById('editTeamDescription').value;
     team.members = document.getElementById('editTeamMembers').value;
+    team.targetDate = document.getElementById('editTeamTargetDate').value;
     team.color = document.getElementById('editTeamColor').value;
     
     saveData();
@@ -1355,7 +1373,7 @@ function renderRecentUpdates() {
             <div class="recent-update-date">${formatDate(update.date, 'short')}</div>
             <div class="recent-update-content">
                 <div class="recent-update-title">${escapeHtml((update.description || '').substring(0, 60))}${(update.description || '').length > 60 ? '...' : ''}</div>
-                <div class="recent-update-category">${update.category}</div>
+                <div class="recent-update-category">${update.category}${update.targetDate ? ` · Target ${escapeHtml(formatDate(update.targetDate, 'short'))}` : ''}</div>
             </div>
         </div>
     `).join('');
@@ -1381,7 +1399,7 @@ function renderPendingActionsList() {
             <div class="recent-update-date" style="color: ${action.priority === 'high' ? 'var(--danger)' : 'var(--text-muted)'}">${action.priority.toUpperCase()}</div>
             <div class="recent-update-content">
                 <div class="recent-update-title">${escapeHtml(action.title)}</div>
-                <div class="recent-update-category">👤 ${escapeHtml(action.owner)}</div>
+                <div class="recent-update-category">👤 ${escapeHtml(action.owner)}${action.dueDate ? ` · Target ${escapeHtml(formatDate(action.dueDate, 'short'))}` : ''}</div>
             </div>
         </div>
     `).join('');
@@ -1499,11 +1517,16 @@ function actionDetail(action) {
     return description || note;
 }
 
+function targetPhrase(date) {
+    if (!date) return '';
+    return `target ${formatDate(date, 'short')}`;
+}
+
 function duePhrase(action, weekEnd) {
-    if (!action.dueDate) return 'no due date';
+    if (!action.dueDate) return '';
     const due = parseLocalDate(action.dueDate);
     const late = action.status !== 'completed' && due && startOfDay(due) < startOfDay(weekEnd);
-    return `due ${formatDate(action.dueDate, 'short')}${late ? ', late' : ''}`;
+    return `${targetPhrase(action.dueDate)}${late ? ', late' : ''}`;
 }
 
 function compareOpenActions(a, b) {
@@ -1701,7 +1724,7 @@ function railHtml(days, color) {
 }
 
 function happenedHtml(update) {
-    const meta = [formatDate(update.date, 'short'), splitOwnerNames(update.people).join(', '), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean).join(' · ');
+    const meta = [formatDate(update.date, 'short'), splitOwnerNames(update.people).join(', '), targetPhrase(update.targetDate), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean).join(' · ');
     return `<div class="happened-item">
         <p><span class="pill ${reportPillClass(update.category)}">${escapeHtml(reportCategoryLabel(update.category))}</span>${escapeHtml(update.description || 'Untitled note')}</p>
         ${meta ? `<div class="fine">${escapeHtml(meta)}</div>` : ''}
@@ -1731,6 +1754,7 @@ function doneHtml(action) {
     const bits = [
         splitOwnerNames(action.owner).join(', ') || 'Unassigned',
         action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '',
+        targetPhrase(action.dueDate),
         action.jira || ''
     ].filter(Boolean);
     const extra = actionDetail(action);
@@ -1793,15 +1817,13 @@ function renderWeeklyHtml(model) {
         [reviews, 'PR reviews']
     ];
     const cards = buckets.active.map(pack => {
-        const peopleLine = namedPeople(pack).join(', ') || 'No people named';
-        const subtitle = pack.team.description ? `${pack.team.description} · ${peopleLine}` : peopleLine;
-        return teamCardHtml(pack, model, pack.team.color, pack.team.name, subtitle);
+        return teamCardHtml(pack, model, pack.team.color, pack.team.name, teamReportSubtitle(pack));
     }).join('');
     const looseHas = buckets.loose.updates.length || buckets.loose.open.length || buckets.loose.done.length;
     const loose = looseHas
         ? teamCardHtml({ ...buckets.loose, team: { members: '' } }, model, '#64748B', 'Not tagged to a team', 'These notes and tasks have no team, so they are easy to miss.')
         : '';
-    const quietNames = buckets.quiet.map(pack => pack.team.name);
+    const quietNames = buckets.quiet.map(quietTeamLabel);
     const quiet = quietNames.length
         ? `<div class="quiet-teams"><div class="section-label">Quiet this week</div><p>${escapeHtml(joinNames(quietNames))} had no notes and no open work in this week.</p></div>`
         : '';
@@ -2079,6 +2101,7 @@ function applyTextImportPlan(plan) {
             name: team.name,
             description: team.description || '',
             members: team.members || '',
+            targetDate: team.targetDate || '',
             color: team.color && team.color !== '#6366F1'
                 ? team.color
                 : IMPORT_TEAM_COLORS[appData.teams.length % IMPORT_TEAM_COLORS.length]
@@ -2100,6 +2123,7 @@ function applyTextImportPlan(plan) {
         appData.updates.push({
             id: generateId(),
             date: update.date,
+            targetDate: update.targetDate || '',
             category: update.category,
             teamId: team ? team.id : '',
             description: update.description,
@@ -2621,17 +2645,27 @@ function renderTagsCloud(updates = appData.updates) {
 
 // ==================== EMAIL REPORT ====================
 
+function teamReportSubtitle(pack) {
+    const peopleLine = namedPeople(pack).join(', ') || 'No people named';
+    return [pack.team && pack.team.description, peopleLine, targetPhrase(pack.team && pack.team.targetDate)].filter(Boolean).join(' · ');
+}
+
+function quietTeamLabel(pack) {
+    const target = targetPhrase(pack.team && pack.team.targetDate);
+    return target ? `${pack.team.name} (${target})` : pack.team.name;
+}
+
 function emailActionLine(action, weekEnd, finished) {
     const status = finished ? 'Done' : reportStatusLabel(action.status);
     const bits = finished
-        ? [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '', action.jira || ''].filter(Boolean)
+        ? [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '', targetPhrase(action.dueDate), action.jira || ''].filter(Boolean)
         : workBits(action, weekEnd);
     const detail = actionDetail(action);
     return `• ${status} · ${action.title}\n  ${bits.join(' · ')}${detail ? `\n  ${detail}` : ''}`;
 }
 
 function emailUpdateLine(update) {
-    const meta = [formatDate(update.date, 'short'), reportCategoryLabel(update.category), splitOwnerNames(update.people).join(', ') || 'No people named', (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean);
+    const meta = [formatDate(update.date, 'short'), reportCategoryLabel(update.category), splitOwnerNames(update.people).join(', ') || 'No people named', targetPhrase(update.targetDate), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean);
     return `• ${meta.join(' · ')}\n  ${update.description || 'Untitled note'}`;
 }
 
@@ -2710,9 +2744,7 @@ function buildWeeklyEmail(model) {
         lines.push(`• ${person.name}${teams ? ` · ${teams}` : ''} · ${bits.join(' · ')}`);
     });
     buckets.active.forEach(pack => {
-        const peopleLine = namedPeople(pack).join(', ') || 'No people named';
-        const subtitle = pack.team.description ? `${pack.team.description} · ${peopleLine}` : peopleLine;
-        lines.push(emailTeamSection(pack.team.name, subtitle, pack, model));
+        lines.push(emailTeamSection(pack.team.name, teamReportSubtitle(pack), pack, model));
     });
     const looseHas = buckets.loose.updates.length || buckets.loose.open.length || buckets.loose.done.length;
     if (looseHas) {
@@ -2721,7 +2753,7 @@ function buildWeeklyEmail(model) {
     if (!buckets.active.length && !looseHas) lines.push('', 'No team had notes or open work in this week.');
     if (buckets.quiet.length) {
         lines.push('', 'QUIET THIS WEEK');
-        lines.push(`${joinNames(buckets.quiet.map(pack => pack.team.name))} had no notes and no open work in this week.`);
+        lines.push(`${joinNames(buckets.quiet.map(quietTeamLabel))} had no notes and no open work in this week.`);
     }
     lines.push('', `Prepared from the daily tracker · ${new Date().toLocaleString()}`);
     return lines.join('\n');

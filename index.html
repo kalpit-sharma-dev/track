@@ -395,9 +395,15 @@
                 <button class="close-btn" onclick="closeModal('addUpdateModal')">&times;</button>
             </div>
             <form id="addUpdateForm" onsubmit="saveUpdate(event)">
-                <div class="form-group">
-                    <label>Date</label>
-                    <input type="date" id="updateDate" required>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="updateDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Target date (optional)</label>
+                        <input type="date" id="updateTargetDate">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Category</label>
@@ -471,7 +477,7 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Due Date</label>
+                        <label>Target date</label>
                         <input type="date" id="actionDueDate">
                     </div>
                     <div class="form-group">
@@ -524,6 +530,10 @@
                     <input type="text" id="teamMembers" placeholder="e.g., Rajesh, Sunita, Chandan">
                 </div>
                 <div class="form-group">
+                    <label>Target date (optional)</label>
+                    <input type="date" id="teamTargetDate">
+                </div>
+                <div class="form-group">
                     <label>Color</label>
                     <input type="color" id="teamColor" value="#4F46E5">
                 </div>
@@ -544,9 +554,15 @@
             </div>
             <form id="editUpdateForm" onsubmit="updateUpdate(event)">
                 <input type="hidden" id="editUpdateId">
-                <div class="form-group">
-                    <label>Date</label>
-                    <input type="date" id="editUpdateDate" required>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="editUpdateDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Target date (optional)</label>
+                        <input type="date" id="editUpdateTargetDate">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Category</label>
@@ -610,6 +626,10 @@
                     <input type="text" id="editTeamMembers" placeholder="e.g., Rajesh, Sunita, Chandan">
                 </div>
                 <div class="form-group">
+                    <label>Target date (optional)</label>
+                    <input type="date" id="editTeamTargetDate">
+                </div>
+                <div class="form-group">
                     <label>Color</label>
                     <input type="color" id="editTeamColor" value="#4F46E5">
                 </div>
@@ -664,7 +684,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Due Date</label>
+                        <label>Target date</label>
                         <input type="date" id="editActionDueDate">
                     </div>
                 </div>
