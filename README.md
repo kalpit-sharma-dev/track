@@ -227,16 +227,16 @@ You can also just double-click `index.html` - all features work! The local serve
 
 1. Click **"Weekly Report"** in the sidebar
 2. Select the week using the date picker
-3. The report auto-generates with:
-   - Summary statistics
-   - What was done
-   - Currently working on
-   - Blockers & issues
-   - Next week's focus
+3. The report is written for management, team by team:
+   - A short read of the week
+   - What happened, with the day, the type of work, and who was there
+   - Who is working on what, with status, due date, and ticket
+   - Blockers that need attention
+   - Teams with no movement that week
 
 **Exporting:**
-- **📋 Copy for Email**: Copies plain text to clipboard - paste into Outlook/Gmail
-- **📄 Export PDF**: Opens print dialog - save as PDF or print
+- **Copy for Email**: Copies a plain-text update you can paste into Outlook or Gmail
+- **Export PDF**: Downloads a PDF of the full on-screen report, including every team, note, person, task, and timeline. Start the tracker with the Mac or Windows script first, because the local server creates the file. Chrome or Edge needs to be installed.
 
 ### Using Analytics
 

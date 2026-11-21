@@ -375,53 +375,13 @@
                     <h2>Weekly Report</h2>
                     <div class="header-actions">
                         <input type="week" id="weekSelector" onchange="generateWeeklyReport()">
-                        <button class="btn btn-secondary" onclick="copyReportToClipboard()">📋 Copy for Email</button>
-                        <button class="btn btn-primary" onclick="exportWeeklyReport()">📄 Export PDF</button>
+                        <button class="btn btn-secondary" id="copyWeeklyReport" onclick="copyReportToClipboard()">📋 Copy for Email</button>
+                        <button class="btn btn-primary" id="downloadWeeklyPdf" onclick="exportWeeklyReport()">📄 Export PDF</button>
                     </div>
                 </div>
 
                 <div class="weekly-report" id="weeklyReport">
-                    <div class="report-section">
-                        <h3>Weekly Summary</h3>
-                        <div class="report-stats" id="weeklyStats">
-                            <div class="report-stat">
-                                <span class="value" id="weeklyUpdatesCount">0</span>
-                                <span class="label">Updates Logged</span>
-                            </div>
-                            <div class="report-stat">
-                                <span class="value" id="weeklyActionsCompleted">0</span>
-                                <span class="label">Actions Completed</span>
-                            </div>
-                            <div class="report-stat">
-                                <span class="value" id="weeklyMeetings">0</span>
-                                <span class="label">Meetings</span>
-                            </div>
-                            <div class="report-stat">
-                                <span class="value" id="weeklyReviews">0</span>
-                                <span class="label">PR Reviews</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="report-section">
-                        <h3>What Was Done</h3>
-                        <div id="weeklyDoneList" class="report-list"></div>
-                    </div>
-
-                    <div class="report-section">
-                        <h3>Currently Working On</h3>
-                        <div id="weeklyInProgressList" class="report-list"></div>
-                    </div>
-
-                    <div class="report-section">
-                        <h3>Blockers & Issues</h3>
-                        <div id="weeklyBlockersList" class="report-list"></div>
-                    </div>
-
-                    <div class="report-section">
-                        <h3>Next Week's Focus</h3>
-                        <div id="weeklyNextList" class="report-list"></div>
-                    </div>
+                    <p class="empty-state">Choose a week to build the management update.</p>
                 </div>
             </section>
         </main>

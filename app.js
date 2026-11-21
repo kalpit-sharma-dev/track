@@ -1324,6 +1324,10 @@ function updateDashboard() {
     
     // Team summary
     renderTeamSummary();
+
+    if (document.getElementById('weekly-view')?.classList.contains('active')) {
+        generateWeeklyReport();
+    }
 }
 
 function getWeekStart(date) {
@@ -1412,111 +1416,449 @@ function renderTeamSummary() {
 
 // ==================== WEEKLY REPORT ====================
 
+let latestWeeklyModel = null;
+
+const REPORT_CATEGORY_LABELS = {
+    meeting: 'Meeting',
+    discussion: 'Discussion',
+    review: 'PR review',
+    approval: 'Approval',
+    audit: 'Audit',
+    planning: 'Planning',
+    issue: 'Issue',
+    other: 'Note'
+};
+
+const REPORT_STATUS_LABELS = {
+    pending: 'Not started',
+    'in-progress': 'In progress',
+    completed: 'Done',
+    blocked: 'Blocked'
+};
+
+function countWord(count, one, many) {
+    return `${count} ${count === 1 ? one : many}`;
+}
+
+function reportCategoryLabel(category) {
+    return REPORT_CATEGORY_LABELS[category] || 'Note';
+}
+
+function reportStatusLabel(status) {
+    return REPORT_STATUS_LABELS[status] || 'Open';
+}
+
+function reportPillClass(value) {
+    return Object.prototype.hasOwnProperty.call(REPORT_CATEGORY_LABELS, value) || Object.prototype.hasOwnProperty.call(REPORT_STATUS_LABELS, value)
+        ? value
+        : 'other';
+}
+
+function expandHex(color) {
+    const hex = safeColor(color).slice(1);
+    return hex.length === 3 ? hex.split('').map(char => char + char).join('') : hex;
+}
+
+function colorWithAlpha(color, alpha) {
+    return `#${expandHex(color)}${alpha}`;
+}
+
+function teamById(id) {
+    return appData.teams.find(team => team.id === id) || null;
+}
+
+function joinNames(names) {
+    if (names.length <= 1) return names[0] || '';
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+function formatWeekRange(start, end) {
+    const sameYear = start.getFullYear() === end.getFullYear();
+    const left = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: sameYear ? undefined : 'numeric' });
+    const right = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${left} – ${right}`;
+}
+
+function weekDayList(weekStart) {
+    return Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(weekStart);
+        date.setDate(weekStart.getDate() + index);
+        return date;
+    });
+}
+
+function sameLocalDay(left, right) {
+    return localDateString(left) === localDateString(right);
+}
+
+function actionDetail(action) {
+    const note = String(action.notes || '').trim();
+    const description = String(action.description || '').trim();
+    if (description && note && description !== note) return `${description} — ${note}`;
+    return description || note;
+}
+
+function duePhrase(action, weekEnd) {
+    if (!action.dueDate) return 'no due date';
+    const due = parseLocalDate(action.dueDate);
+    const late = action.status !== 'completed' && due && startOfDay(due) < startOfDay(weekEnd);
+    return `due ${formatDate(action.dueDate, 'short')}${late ? ', late' : ''}`;
+}
+
+function compareOpenActions(a, b) {
+    const rank = { blocked: 0, 'in-progress': 1, pending: 2 };
+    const statusGap = (rank[a.status] ?? 3) - (rank[b.status] ?? 3);
+    if (statusGap) return statusGap;
+    const priority = { high: 0, medium: 1, low: 2 };
+    const priorityGap = (priority[a.priority] ?? 1) - (priority[b.priority] ?? 1);
+    if (priorityGap) return priorityGap;
+    return String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999'));
+}
+
+function collectWeeklyModel(weekStart, weekEnd) {
+    const withTeam = item => ({ ...item, teamName: teamById(item.teamId)?.name || '' });
+    const updates = appData.updates
+        .filter(update => {
+            const date = parseLocalDate(update.date);
+            return date && date >= weekStart && date <= weekEnd;
+        })
+        .map(withTeam)
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const doneActions = appData.actions
+        .filter(action => {
+            if (!action.completedAt) return false;
+            const completed = new Date(action.completedAt);
+            return !Number.isNaN(completed.getTime()) && completed >= weekStart && completed <= weekEnd;
+        })
+        .map(withTeam)
+        .sort((a, b) => String(a.completedAt).localeCompare(String(b.completedAt)));
+    const openActions = appData.actions
+        .filter(action => action.status !== 'completed' && activeDuringWeek(action, weekStart, weekEnd))
+        .map(withTeam)
+        .sort(compareOpenActions);
+    return { weekStart, weekEnd, updates, doneActions, openActions };
+}
+
+function bucketByTeam(model) {
+    const known = new Set(appData.teams.map(team => team.id));
+    const packs = appData.teams.map(team => ({
+        team,
+        updates: model.updates.filter(update => update.teamId === team.id),
+        open: model.openActions.filter(action => action.teamId === team.id),
+        done: model.doneActions.filter(action => action.teamId === team.id)
+    }));
+    return {
+        active: packs
+            .filter(pack => pack.updates.length || pack.open.length || pack.done.length)
+            .sort((a, b) => (b.updates.length + b.done.length + b.open.length) - (a.updates.length + a.done.length + a.open.length) || a.team.name.localeCompare(b.team.name)),
+        quiet: packs.filter(pack => !pack.updates.length && !pack.open.length && !pack.done.length),
+        loose: {
+            updates: model.updates.filter(update => !known.has(update.teamId)),
+            open: model.openActions.filter(action => !known.has(action.teamId)),
+            done: model.doneActions.filter(action => !known.has(action.teamId))
+        }
+    };
+}
+
+function peopleThisWeek(model) {
+    const people = new Map();
+    const entry = name => {
+        const key = name.toLowerCase();
+        if (!people.has(key)) people.set(key, { name, notes: 0, open: 0, done: 0, blocked: 0, teams: new Set() });
+        return people.get(key);
+    };
+    model.updates.forEach(update => {
+        splitOwnerNames(update.people).forEach(name => {
+            const person = entry(name);
+            person.notes += 1;
+            if (update.teamName) person.teams.add(update.teamName);
+        });
+    });
+    model.openActions.forEach(action => {
+        splitOwnerNames(action.owner).forEach(name => {
+            const person = entry(name);
+            person.open += 1;
+            if (action.status === 'blocked') person.blocked += 1;
+            if (action.teamName) person.teams.add(action.teamName);
+        });
+    });
+    model.doneActions.forEach(action => {
+        splitOwnerNames(action.owner).forEach(name => {
+            const person = entry(name);
+            person.done += 1;
+            if (action.teamName) person.teams.add(action.teamName);
+        });
+    });
+    return [...people.values()].sort((a, b) => (b.open + b.done + b.notes) - (a.open + a.done + a.notes) || a.name.localeCompare(b.name));
+}
+
+function namedPeople(pack) {
+    const names = new Set(splitOwnerNames(pack.team?.members));
+    pack.updates.forEach(update => splitOwnerNames(update.people).forEach(name => names.add(name)));
+    pack.open.forEach(action => splitOwnerNames(action.owner).forEach(name => names.add(name)));
+    pack.done.forEach(action => splitOwnerNames(action.owner).forEach(name => names.add(name)));
+    return [...names];
+}
+
+function managementLead(model, buckets, people) {
+    if (!model.updates.length && !model.doneActions.length && !model.openActions.length) {
+        return 'Nothing was logged for this week, and no open work falls inside it.';
+    }
+    const sentences = [];
+    if (model.updates.length && buckets.active.length) {
+        sentences.push(`${countWord(model.updates.length, 'note', 'notes')} across ${countWord(buckets.active.length, 'team', 'teams')}.`);
+    } else if (model.updates.length) {
+        sentences.push(`${countWord(model.updates.length, 'note', 'notes')} were logged, and none are tagged to a team.`);
+    } else {
+        sentences.push('No new notes were logged.');
+    }
+    if (model.doneActions.length) sentences.push(`${countWord(model.doneActions.length, 'task', 'tasks')} finished.`);
+    if (model.openActions.length) {
+        const inProgress = model.openActions.filter(action => action.status === 'in-progress').length;
+        const pending = model.openActions.filter(action => action.status === 'pending').length;
+        const bits = [];
+        if (inProgress) bits.push(`${inProgress} in progress`);
+        if (pending) bits.push(`${pending} not started`);
+        sentences.push(`${countWord(model.openActions.length, 'task is', 'tasks are')} still open${bits.length ? ` (${bits.join(', ')})` : ''}.`);
+    }
+    const blockers = model.openActions.filter(action => action.status === 'blocked');
+    if (blockers.length === 1) sentences.push('1 blocker needs a decision.');
+    else if (blockers.length) sentences.push(`${blockers.length} blockers need a decision.`);
+    else sentences.push('No blockers are open.');
+    if (buckets.active[0]) sentences.push(`${buckets.active[0].team.name} had the most movement.`);
+    const busiestPerson = [...people].sort((a, b) => b.open - a.open || a.name.localeCompare(b.name))[0];
+    if (busiestPerson && busiestPerson.open > 0) {
+        sentences.push(`${busiestPerson.name} is carrying the most open work (${countWord(busiestPerson.open, 'task', 'tasks')}).`);
+    }
+    return sentences.join(' ');
+}
+
+function insightTiles(model, buckets, people) {
+    const tiles = [];
+    if (buckets.active[0]) {
+        const pack = buckets.active[0];
+        tiles.push({
+            kicker: 'Busiest team',
+            title: pack.team.name,
+            detail: `${countWord(pack.updates.length, 'note', 'notes')}, ${countWord(pack.open.length, 'open task', 'open tasks')}, ${countWord(pack.done.length, 'finished', 'finished')}`
+        });
+    } else {
+        tiles.push({ kicker: 'Busiest team', title: 'No team activity', detail: 'Tag a note or a task to a team and it will show up here.' });
+    }
+    const blockers = model.openActions.filter(action => action.status === 'blocked');
+    if (blockers.length === 1) {
+        tiles.push({
+            kicker: 'Needs a decision',
+            title: blockers[0].title,
+            detail: [blockers[0].owner || 'Unassigned', blockers[0].teamName].filter(Boolean).join(' · ')
+        });
+    } else if (blockers.length) {
+        tiles.push({
+            kicker: 'Needs a decision',
+            title: countWord(blockers.length, 'blocker', 'blockers'),
+            detail: blockers.slice(0, 2).map(action => action.title).join('; ')
+        });
+    } else {
+        tiles.push({ kicker: 'Needs a decision', title: 'No blockers', detail: 'Nothing is marked blocked for this week.' });
+    }
+    const busiestPerson = [...people].sort((a, b) => b.open - a.open || a.name.localeCompare(b.name))[0];
+    if (busiestPerson && busiestPerson.open > 0) {
+        tiles.push({
+            kicker: 'Most open work',
+            title: busiestPerson.name,
+            detail: `${countWord(busiestPerson.open, 'open task', 'open tasks')}${busiestPerson.teams.size ? ` · ${[...busiestPerson.teams].join(', ')}` : ''}`
+        });
+    } else if (people[0]) {
+        tiles.push({
+            kicker: 'Most visible',
+            title: people[0].name,
+            detail: `${countWord(people[0].notes, 'note', 'notes')} this week`
+        });
+    } else {
+        tiles.push({ kicker: 'Most open work', title: 'No owners named', detail: 'Add a person on a note or a task.' });
+    }
+    return tiles;
+}
+
+function countsByDay(items, weekStart, dateOf) {
+    return weekDayList(weekStart).map(day => ({
+        day,
+        label: day.toLocaleDateString('en-US', { weekday: 'short' }),
+        date: day.getDate(),
+        count: items.filter(item => {
+            const date = parseLocalDate(dateOf(item));
+            return date && sameLocalDay(date, day);
+        }).length
+    }));
+}
+
+function railHtml(days, color) {
+    return `<div class="week-rail">${days.map(day => `
+        <div class="week-day${day.count ? ' has-work' : ''}"${day.count ? ` style="background:${colorWithAlpha(color, '22')}"` : ''}>
+            <span>${day.label}</span><em>${day.date}</em><strong>${day.count}</strong>
+        </div>`).join('')}</div>`;
+}
+
+function happenedHtml(update) {
+    const meta = [formatDate(update.date, 'short'), splitOwnerNames(update.people).join(', '), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean).join(' · ');
+    return `<div class="happened-item">
+        <p><span class="pill ${reportPillClass(update.category)}">${escapeHtml(reportCategoryLabel(update.category))}</span>${escapeHtml(update.description || 'Untitled note')}</p>
+        ${meta ? `<div class="fine">${escapeHtml(meta)}</div>` : ''}
+    </div>`;
+}
+
+function workBits(action, weekEnd) {
+    return [
+        splitOwnerNames(action.owner).join(', ') || 'Unassigned',
+        duePhrase(action, weekEnd),
+        action.jira || '',
+        action.priority === 'high' ? 'High priority' : action.priority === 'low' ? 'Low priority' : '',
+        action.recurring ? `Repeats ${action.recurring}` : ''
+    ].filter(Boolean);
+}
+
+function workHtml(action, weekEnd) {
+    const extra = actionDetail(action);
+    return `<div class="work-row">
+        <p><span class="pill ${reportPillClass(action.status)}">${escapeHtml(reportStatusLabel(action.status))}</span><strong>${escapeHtml(action.title)}</strong></p>
+        <div class="fine">${escapeHtml(workBits(action, weekEnd).join(' · '))}</div>
+        ${extra ? `<div class="fine">${escapeHtml(extra)}</div>` : ''}
+    </div>`;
+}
+
+function doneHtml(action) {
+    const bits = [
+        splitOwnerNames(action.owner).join(', ') || 'Unassigned',
+        action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '',
+        action.jira || ''
+    ].filter(Boolean);
+    const extra = actionDetail(action);
+    return `<div class="work-row">
+        <p><span class="pill completed">Done</span><strong>${escapeHtml(action.title)}</strong></p>
+        <div class="fine">${escapeHtml(bits.join(' · '))}</div>
+        ${extra ? `<div class="fine">${escapeHtml(extra)}</div>` : ''}
+    </div>`;
+}
+
+function teamCardHtml(pack, model, color, title, subtitle) {
+    const blockers = pack.open.filter(action => action.status === 'blocked').length;
+    const counts = [
+        countWord(pack.updates.length, 'note', 'notes'),
+        countWord(pack.open.length, 'open', 'open'),
+        countWord(pack.done.length, 'finished', 'finished')
+    ];
+    if (blockers) counts.push(countWord(blockers, 'blocker', 'blockers'));
+    return `<article class="team-brief">
+        <header class="team-brief-head" style="border-left-color:${safeColor(color)};background:${colorWithAlpha(color, '18')}">
+            <div>
+                <h3>${escapeHtml(title)}</h3>
+                <p>${escapeHtml(subtitle)}</p>
+            </div>
+            <div class="team-counts">${counts.map(count => `<span>${escapeHtml(count)}</span>`).join('')}</div>
+        </header>
+        <div class="team-brief-body">
+            <div>
+                <div class="section-label">Timeline</div>
+                ${railHtml(countsByDay(pack.updates, model.weekStart, update => update.date), color)}
+            </div>
+            <div class="team-split">
+                <div>
+                    <h4>What happened</h4>
+                    ${pack.updates.length ? pack.updates.map(happenedHtml).join('') : '<p class="fine">No notes this week.</p>'}
+                </div>
+                <div>
+                    <h4>Who is working on what</h4>
+                    ${pack.open.length ? pack.open.map(action => workHtml(action, model.weekEnd)).join('') : '<p class="fine">No open tasks this week.</p>'}
+                    ${pack.done.length ? `<h4 class="split-follow">Finished this week</h4>${pack.done.map(doneHtml).join('')}` : ''}
+                </div>
+            </div>
+        </div>
+    </article>`;
+}
+
+function renderWeeklyHtml(model) {
+    const buckets = bucketByTeam(model);
+    const people = peopleThisWeek(model);
+    const meetings = model.updates.filter(update => update.category === 'meeting').length;
+    const reviews = model.updates.filter(update => update.category === 'review').length;
+    const inProgress = model.openActions.filter(action => action.status === 'in-progress').length;
+    const blockers = model.openActions.filter(action => action.status === 'blocked');
+    const stats = [
+        [model.updates.length, 'Notes'],
+        [model.doneActions.length, 'Finished'],
+        [inProgress, 'In progress'],
+        [blockers.length, 'Blockers'],
+        [meetings, 'Meetings'],
+        [reviews, 'PR reviews']
+    ];
+    const cards = buckets.active.map(pack => {
+        const peopleLine = namedPeople(pack).join(', ') || 'No people named';
+        const subtitle = pack.team.description ? `${pack.team.description} · ${peopleLine}` : peopleLine;
+        return teamCardHtml(pack, model, pack.team.color, pack.team.name, subtitle);
+    }).join('');
+    const looseHas = buckets.loose.updates.length || buckets.loose.open.length || buckets.loose.done.length;
+    const loose = looseHas
+        ? teamCardHtml({ ...buckets.loose, team: { members: '' } }, model, '#64748B', 'Not tagged to a team', 'These notes and tasks have no team, so they are easy to miss.')
+        : '';
+    const quietNames = buckets.quiet.map(pack => pack.team.name);
+    const quiet = quietNames.length
+        ? `<div class="quiet-teams"><div class="section-label">Quiet this week</div><p>${escapeHtml(joinNames(quietNames))} had no notes and no open work in this week.</p></div>`
+        : '';
+    const attention = blockers.length ? `<section class="mgmt-callout"><h4>Needs attention</h4><ul>${blockers.map(action => {
+        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), action.jira, actionDetail(action)].filter(Boolean);
+        return `<li><strong>${escapeHtml(action.title)}</strong> — ${escapeHtml(bits.join(' · '))}</li>`;
+    }).join('')}</ul></section>` : '';
+    const peopleBoard = people.length ? `<section class="people-board"><div class="section-label">Who was involved</div><div class="people-chips">${people.map(person => {
+        const otherOpen = person.open - person.blocked;
+        const bits = [];
+        if (person.blocked) bits.push(countWord(person.blocked, 'blocked', 'blocked'));
+        if (otherOpen > 0) bits.push(countWord(otherOpen, 'open', 'open'));
+        if (person.done) bits.push(countWord(person.done, 'finished', 'finished'));
+        if (person.notes) bits.push(countWord(person.notes, 'note', 'notes'));
+        const teams = [...person.teams].join(', ');
+        return `<span class="person-chip">${escapeHtml(person.name)}${teams ? ` · ${escapeHtml(teams)}` : ''} · ${escapeHtml(bits.join(' · '))}</span>`;
+    }).join('')}</div></section>` : '';
+    return `
+        <div class="mgmt-hero">
+            <div class="mgmt-kicker">Management update · ${escapeHtml(model.label)}</div>
+            <h3>${escapeHtml(model.range)}</h3>
+            <p class="mgmt-lead">${escapeHtml(managementLead(model, buckets, people))}</p>
+        </div>
+        <div class="mgmt-stats">${stats.map(([value, label]) => `<div class="mgmt-stat"><strong>${value}</strong><span>${label}</span></div>`).join('')}</div>
+        <div class="mgmt-body">
+            <div class="insight-row">${insightTiles(model, buckets, people).map(tile => `
+                <div class="insight-tile"><span>${escapeHtml(tile.kicker)}</span><strong>${escapeHtml(tile.title)}</strong><p>${escapeHtml(tile.detail)}</p></div>
+            `).join('')}</div>
+            <section class="timeline-board">
+                <div class="section-label">When the work happened</div>
+                ${railHtml(countsByDay(model.updates, model.weekStart, update => update.date), '#4F46E5')}
+            </section>
+            ${attention}
+            ${peopleBoard}
+            ${cards || (!loose ? '<p class="empty-state">No team had notes or open work in this week.</p>' : '')}
+            ${loose}
+            ${quiet}
+            <p class="report-foot">Prepared from the daily tracker · ${escapeHtml(new Date().toLocaleString())}</p>
+        </div>`;
+}
+
 function generateWeeklyReport() {
-    const weekInput = document.getElementById('weekSelector').value;
-    if (!weekInput) return;
-    
+    const host = document.getElementById('weeklyReport');
+    const weekInput = document.getElementById('weekSelector')?.value || '';
+    if (!host) return;
+    if (!weekInput.includes('-W')) {
+        latestWeeklyModel = null;
+        host.innerHTML = '<p class="empty-state">Choose a week to build the management update.</p>';
+        return;
+    }
     const [year, week] = weekInput.split('-W');
     const weekStart = getDateOfISOWeek(parseInt(week, 10), parseInt(year, 10));
     const weekEnd = endOfDay(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6));
-    
-    // Filter data for the week
-    const weekUpdates = appData.updates.filter(u => {
-        const d = parseLocalDate(u.date);
-        return d && d >= weekStart && d <= weekEnd;
-    });
-    
-    const weekActionsCompleted = appData.actions.filter(a => {
-        if (!a.completedAt) return false;
-        const d = new Date(a.completedAt);
-        return d >= weekStart && d <= weekEnd;
-    });
-    
-    const meetings = weekUpdates.filter(u => u.category === 'meeting').length;
-    const reviews = weekUpdates.filter(u => u.category === 'review').length;
-    
-    // Update stats
-    document.getElementById('weeklyUpdatesCount').textContent = weekUpdates.length;
-    document.getElementById('weeklyActionsCompleted').textContent = weekActionsCompleted.length;
-    document.getElementById('weeklyMeetings').textContent = meetings;
-    document.getElementById('weeklyReviews').textContent = reviews;
-    
-    // What was done
-    const doneList = document.getElementById('weeklyDoneList');
-    const doneItems = [...weekUpdates, ...weekActionsCompleted.map(a => ({
-        description: a.title,
-        category: 'completed',
-        date: a.completedAt
-    }))];
-    
-    if (doneItems.length === 0) {
-        doneList.innerHTML = '<p class="empty-state">No completed items this week</p>';
-    } else {
-        doneList.innerHTML = doneItems.map(item => `
-            <div class="report-item">
-                <div class="report-item-icon" style="background: var(--success); color: white;">✓</div>
-                <div class="report-item-content">
-                    <div class="report-item-title">${escapeHtml(item.description)}</div>
-                    <div class="report-item-meta">${formatDate(item.date, 'short')} • ${item.category}</div>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    // Currently working on
-    const inProgressList = document.getElementById('weeklyInProgressList');
-    const inProgress = appData.actions.filter(action => action.status === 'in-progress' && activeDuringWeek(action, weekStart, weekEnd));
-    
-    if (inProgress.length === 0) {
-        inProgressList.innerHTML = '<p class="empty-state">No items currently in progress</p>';
-    } else {
-        inProgressList.innerHTML = inProgress.map(item => `
-            <div class="report-item">
-                <div class="report-item-icon" style="background: var(--info); color: white;">⟳</div>
-                <div class="report-item-content">
-                    <div class="report-item-title">${escapeHtml(item.title)}</div>
-                    <div class="report-item-meta">Owner: ${escapeHtml(item.owner)}${item.dueDate ? ` • Due: ${formatDate(item.dueDate, 'short')}` : ''}</div>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    // Blockers
-    const blockersList = document.getElementById('weeklyBlockersList');
-    const blockers = appData.actions.filter(action => action.status === 'blocked' && activeDuringWeek(action, weekStart, weekEnd));
-    
-    if (blockers.length === 0) {
-        blockersList.innerHTML = '<p class="empty-state">No blockers reported</p>';
-    } else {
-        blockersList.innerHTML = blockers.map(item => `
-            <div class="report-item">
-                <div class="report-item-icon" style="background: var(--danger); color: white;">!</div>
-                <div class="report-item-content">
-                    <div class="report-item-title">${escapeHtml(item.title)}</div>
-                    <div class="report-item-meta">Owner: ${escapeHtml(item.owner)}</div>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    // Next week's focus (pending high priority items)
-    const nextList = document.getElementById('weeklyNextList');
-    const nextFocus = appData.actions
-        .filter(action => action.status === 'pending' && action.priority === 'high' && activeDuringWeek(action, weekStart, weekEnd));
-    
-    if (nextFocus.length === 0) {
-        nextList.innerHTML = '<p class="empty-state">No high priority items pending</p>';
-    } else {
-        nextList.innerHTML = nextFocus.map(item => `
-            <div class="report-item">
-                <div class="report-item-icon" style="background: var(--warning); color: white;">→</div>
-                <div class="report-item-content">
-                    <div class="report-item-title">${escapeHtml(item.title)}</div>
-                    <div class="report-item-meta">Owner: ${escapeHtml(item.owner)}</div>
-                </div>
-            </div>
-        `).join('');
-    }
+    latestWeeklyModel = collectWeeklyModel(weekStart, weekEnd);
+    latestWeeklyModel.label = `Week ${Number(week)}, ${year}`;
+    latestWeeklyModel.range = formatWeekRange(weekStart, weekEnd);
+    host.innerHTML = renderWeeklyHtml(latestWeeklyModel);
 }
 
 function activeDuringWeek(item, weekStart, weekEnd) {
@@ -1537,74 +1879,79 @@ function getDateOfISOWeek(week, year) {
     return monday;
 }
 
-function exportWeeklyReport() {
+async function buildExactReportDocument(report) {
+    const width = Math.max(320, Math.ceil(report.getBoundingClientRect().width));
+    const height = Math.max(800, Math.ceil(report.scrollHeight) + 1200);
+    const cssResponse = await fetch('styles.css', { cache: 'no-store' });
+    if (!cssResponse.ok) throw new Error('The report styles could not be loaded. Start the tracker with the Mac or Windows script, then export again.');
+    const css = (await cssResponse.text()).replace(/<\/style/gi, '<\\/style');
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    const pageTitle = latestWeeklyModel ? `${latestWeeklyModel.label} ${latestWeeklyModel.range}` : 'Weekly report';
+    return `<!DOCTYPE html>
+<html lang="en" data-theme="${theme}">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(pageTitle)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>${css}</style>
+<style>
+  html, body { margin: 0; padding: 0; background: ${theme === 'dark' ? '#0F172A' : '#F8FAFC'}; width: ${width}px; }
+  .weekly-report, .team-brief { overflow: visible !important; width: ${width}px; max-width: none; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  @page { size: ${width}px ${height}px; margin: 0; }
+</style>
+</head>
+<body>${report.outerHTML}</body>
+</html>`;
+}
+
+async function exportWeeklyReport() {
     const weekInput = document.getElementById('weekSelector').value;
-    const reportContent = document.getElementById('weeklyReport');
-    
-    // Create a printable version
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-        alert('Allow pop-ups for this page, then export the weekly report again.');
+    if (!weekInput || !weekInput.includes('-W')) {
+        alert('Pick a week first.');
         return;
     }
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Weekly Report - ${weekInput}</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-                h1 { color: #4F46E5; border-bottom: 2px solid #4F46E5; padding-bottom: 10px; }
-                h2 { color: #374151; margin-top: 30px; }
-                .stat-row { display: flex; gap: 20px; margin: 20px 0; }
-                .stat { text-align: center; padding: 20px; background: #F3F4F6; border-radius: 8px; flex: 1; }
-                .stat-value { font-size: 2em; font-weight: bold; color: #4F46E5; }
-                .stat-label { color: #6B7280; }
-                .item { padding: 10px; background: #F9FAFB; margin: 8px 0; border-radius: 4px; border-left: 4px solid #4F46E5; }
-                .item-title { font-weight: 500; }
-                .item-meta { font-size: 0.85em; color: #6B7280; }
-                @media print { body { padding: 20px; } }
-            </style>
-        </head>
-        <body>
-            <h1>Weekly Report - Week ${weekInput}</h1>
-            <div class="stat-row">
-                <div class="stat">
-                    <div class="stat-value">${document.getElementById('weeklyUpdatesCount').textContent}</div>
-                    <div class="stat-label">Updates Logged</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value">${document.getElementById('weeklyActionsCompleted').textContent}</div>
-                    <div class="stat-label">Actions Completed</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value">${document.getElementById('weeklyMeetings').textContent}</div>
-                    <div class="stat-label">Meetings</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-value">${document.getElementById('weeklyReviews').textContent}</div>
-                    <div class="stat-label">PR Reviews</div>
-                </div>
-            </div>
-            
-            <h2>What Was Done</h2>
-            ${document.getElementById('weeklyDoneList').innerHTML}
-            
-            <h2>Currently Working On</h2>
-            ${document.getElementById('weeklyInProgressList').innerHTML}
-            
-            <h2>Blockers & Issues</h2>
-            ${document.getElementById('weeklyBlockersList').innerHTML}
-            
-            <h2>Next Week's Focus</h2>
-            ${document.getElementById('weeklyNextList').innerHTML}
-            
-            <p style="margin-top: 40px; color: #9CA3AF; font-size: 0.85em;">Generated on ${new Date().toLocaleString()}</p>
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+    generateWeeklyReport();
+    const report = document.getElementById('weeklyReport');
+    const button = document.getElementById('downloadWeeklyPdf');
+    const previousLabel = button ? button.textContent : '';
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Preparing PDF…';
+    }
+    try {
+        const html = await buildExactReportDocument(report);
+        const filename = `management-update-${weekInput}.pdf`;
+        const response = await fetch('/api/report.pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html, filename })
+        });
+        if (!response.ok) {
+            const message = (await response.text()).trim();
+            throw new Error(message || 'The PDF could not be created.');
+        }
+        const blob = await response.blob();
+        if (!blob.size) throw new Error('The PDF came back empty.');
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (error) {
+        const message = error && error.message ? error.message : 'The PDF could not be downloaded.';
+        alert(message.includes('fetch') || message === 'Failed to fetch'
+            ? 'Start the tracker with the Mac or Windows script, then export the PDF again.'
+            : message);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = previousLabel;
+        }
+    }
 }
 
 // ==================== MODAL HELPERS ====================
@@ -2274,91 +2621,137 @@ function renderTagsCloud(updates = appData.updates) {
 
 // ==================== EMAIL REPORT ====================
 
+function emailActionLine(action, weekEnd, finished) {
+    const status = finished ? 'Done' : reportStatusLabel(action.status);
+    const bits = finished
+        ? [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '', action.jira || ''].filter(Boolean)
+        : workBits(action, weekEnd);
+    const detail = actionDetail(action);
+    return `• ${status} · ${action.title}\n  ${bits.join(' · ')}${detail ? `\n  ${detail}` : ''}`;
+}
+
+function emailUpdateLine(update) {
+    const meta = [formatDate(update.date, 'short'), reportCategoryLabel(update.category), splitOwnerNames(update.people).join(', ') || 'No people named', (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean);
+    return `• ${meta.join(' · ')}\n  ${update.description || 'Untitled note'}`;
+}
+
+function emailTeamSection(title, subtitle, pack, model) {
+    const lines = ['', title.toUpperCase(), subtitle];
+    const blockers = pack.open.filter(action => action.status === 'blocked').length;
+    lines.push(`${countWord(pack.updates.length, 'note', 'notes')} · ${countWord(pack.open.length, 'open task', 'open tasks')} · ${countWord(pack.done.length, 'finished', 'finished')}${blockers ? ` · ${countWord(blockers, 'blocker', 'blockers')}` : ''}`);
+    lines.push('', 'Timeline');
+    countsByDay(pack.updates, model.weekStart, update => update.date).forEach(day => {
+        const dated = day.day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        lines.push(`${dated}: ${day.count}`);
+    });
+    lines.push('', 'What happened');
+    if (!pack.updates.length) lines.push('• No notes this week.');
+    pack.updates.forEach(update => lines.push(emailUpdateLine(update)));
+    lines.push('', 'Who is working on what');
+    if (!pack.open.length) lines.push('• No open tasks this week.');
+    pack.open.forEach(action => lines.push(emailActionLine(action, model.weekEnd, false)));
+    if (pack.done.length) {
+        lines.push('', 'Finished this week');
+        pack.done.forEach(action => lines.push(emailActionLine(action, model.weekEnd, true)));
+    }
+    return lines.join('\n');
+}
+
+function buildWeeklyEmail(model) {
+    const buckets = bucketByTeam(model);
+    const people = peopleThisWeek(model);
+    const meetings = model.updates.filter(update => update.category === 'meeting').length;
+    const reviews = model.updates.filter(update => update.category === 'review').length;
+    const inProgress = model.openActions.filter(action => action.status === 'in-progress').length;
+    const blockers = model.openActions.filter(action => action.status === 'blocked');
+    const lines = [
+        'MANAGEMENT UPDATE',
+        model.label,
+        model.range,
+        '',
+        managementLead(model, buckets, people),
+        '',
+        'SNAPSHOT',
+        `Notes: ${model.updates.length}`,
+        `Finished: ${model.doneActions.length}`,
+        `In progress: ${inProgress}`,
+        `Blockers: ${blockers.length}`,
+        `Meetings: ${meetings}`,
+        `PR reviews: ${reviews}`,
+        '',
+        'THIS WEEK AT A GLANCE'
+    ];
+    insightTiles(model, buckets, people).forEach(tile => {
+        lines.push(`${tile.kicker}: ${tile.title}`);
+        lines.push(`  ${tile.detail}`);
+    });
+    lines.push('', 'WHEN THE WORK HAPPENED');
+    countsByDay(model.updates, model.weekStart, update => update.date).forEach(day => {
+        const dated = day.day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        lines.push(`${dated}: ${day.count}`);
+    });
+    lines.push('', 'NEEDS ATTENTION');
+    if (!blockers.length) lines.push('• No blockers are open.');
+    blockers.forEach(action => {
+        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), action.jira, actionDetail(action)].filter(Boolean);
+        lines.push(`• ${action.title}`);
+        lines.push(`  ${bits.join(' · ')}`);
+    });
+    lines.push('', 'WHO WAS INVOLVED');
+    if (!people.length) lines.push('• No people were named.');
+    people.forEach(person => {
+        const otherOpen = person.open - person.blocked;
+        const bits = [];
+        if (person.blocked) bits.push(countWord(person.blocked, 'blocked', 'blocked'));
+        if (otherOpen > 0) bits.push(countWord(otherOpen, 'open', 'open'));
+        if (person.done) bits.push(countWord(person.done, 'finished', 'finished'));
+        if (person.notes) bits.push(countWord(person.notes, 'note', 'notes'));
+        const teams = [...person.teams].join(', ');
+        lines.push(`• ${person.name}${teams ? ` · ${teams}` : ''} · ${bits.join(' · ')}`);
+    });
+    buckets.active.forEach(pack => {
+        const peopleLine = namedPeople(pack).join(', ') || 'No people named';
+        const subtitle = pack.team.description ? `${pack.team.description} · ${peopleLine}` : peopleLine;
+        lines.push(emailTeamSection(pack.team.name, subtitle, pack, model));
+    });
+    const looseHas = buckets.loose.updates.length || buckets.loose.open.length || buckets.loose.done.length;
+    if (looseHas) {
+        lines.push(emailTeamSection('Not tagged to a team', 'These notes and tasks have no team, so they are easy to miss.', { ...buckets.loose, team: { members: '' } }, model));
+    }
+    if (!buckets.active.length && !looseHas) lines.push('', 'No team had notes or open work in this week.');
+    if (buckets.quiet.length) {
+        lines.push('', 'QUIET THIS WEEK');
+        lines.push(`${joinNames(buckets.quiet.map(pack => pack.team.name))} had no notes and no open work in this week.`);
+    }
+    lines.push('', `Prepared from the daily tracker · ${new Date().toLocaleString()}`);
+    return lines.join('\n');
+}
+
 function copyReportToClipboard() {
     const weekInput = document.getElementById('weekSelector').value;
     if (!weekInput || !weekInput.includes('-W')) {
         alert('Pick a week first.');
         return;
     }
-    const [year, week] = weekInput.split('-W');
-    
-    // Build plain text report
-    let report = `WEEKLY STATUS REPORT - Week ${week}, ${year}\n`;
-    report += `${'='.repeat(50)}\n\n`;
-    
-    // Stats
-    report += `SUMMARY\n`;
-    report += `-`.repeat(30) + '\n';
-    report += `• Updates Logged: ${document.getElementById('weeklyUpdatesCount').textContent}\n`;
-    report += `• Actions Completed: ${document.getElementById('weeklyActionsCompleted').textContent}\n`;
-    report += `• Meetings: ${document.getElementById('weeklyMeetings').textContent}\n`;
-    report += `• PR Reviews: ${document.getElementById('weeklyReviews').textContent}\n\n`;
-    
-    // What was done
-    report += `WHAT WAS DONE\n`;
-    report += `-`.repeat(30) + '\n';
-    const doneItems = document.querySelectorAll('#weeklyDoneList .report-item-title');
-    if (doneItems.length === 0) {
-        report += `• No items completed this week\n`;
-    } else {
-        doneItems.forEach(item => {
-            report += `• ${item.textContent}\n`;
-        });
+    generateWeeklyReport();
+    if (!latestWeeklyModel) {
+        alert('Pick a week first.');
+        return;
     }
-    report += '\n';
-    
-    // In Progress
-    report += `CURRENTLY WORKING ON\n`;
-    report += `-`.repeat(30) + '\n';
-    const inProgressItems = document.querySelectorAll('#weeklyInProgressList .report-item-title');
-    if (inProgressItems.length === 0) {
-        report += `• No items in progress\n`;
-    } else {
-        inProgressItems.forEach(item => {
-            report += `• ${item.textContent}\n`;
-        });
-    }
-    report += '\n';
-    
-    // Blockers
-    report += `BLOCKERS & ISSUES\n`;
-    report += `-`.repeat(30) + '\n';
-    const blockers = document.querySelectorAll('#weeklyBlockersList .report-item-title');
-    if (blockers.length === 0) {
-        report += `• No blockers reported\n`;
-    } else {
-        blockers.forEach(item => {
-            report += `• ${item.textContent}\n`;
-        });
-    }
-    report += '\n';
-    
-    // Next week
-    report += `NEXT WEEK'S FOCUS\n`;
-    report += `-`.repeat(30) + '\n';
-    const nextItems = document.querySelectorAll('#weeklyNextList .report-item-title');
-    if (nextItems.length === 0) {
-        report += `• No high priority items pending\n`;
-    } else {
-        nextItems.forEach(item => {
-            report += `• ${item.textContent}\n`;
-        });
-    }
-    
-    report += `\n${'='.repeat(50)}\n`;
-    report += `Generated: ${new Date().toLocaleString()}\n`;
-    
-    // Copy to clipboard
-    navigator.clipboard.writeText(report).then(() => {
-        alert('Report copied to clipboard! You can now paste it into your email.');
-    }).catch(err => {
-        // Fallback for older browsers
+    const report = buildWeeklyEmail(latestWeeklyModel);
+    const notify = () => alert('Report copied. Paste it into your email.');
+    const fallbackCopy = () => {
         const textarea = document.createElement('textarea');
         textarea.value = report;
         document.body.appendChild(textarea);
         textarea.select();
         document.execCommand('copy');
         document.body.removeChild(textarea);
-        alert('Report copied to clipboard! You can now paste it into your email.');
-    });
+        notify();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(report).then(notify).catch(fallbackCopy);
+    } else {
+        fallbackCopy();
+    }
 }
