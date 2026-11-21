@@ -217,12 +217,13 @@ function formatDate(date, format = 'long') {
 
 // Populate team dropdowns
 function populateTeamDropdowns() {
-    const dropdowns = ['updateTeam', 'actionTeam', 'filterTeam'];
+    const dropdowns = ['updateTeam', 'actionTeam', 'filterTeam', 'filterActionTeam'];
     dropdowns.forEach(id => {
         const dropdown = document.getElementById(id);
         if (dropdown) {
             const currentValue = dropdown.value;
-            dropdown.innerHTML = '<option value="">Select Team</option>';
+            const isFilter = id.startsWith('filter');
+            dropdown.innerHTML = isFilter ? '<option value="">All Teams</option>' : '<option value="">Select Team</option>';
             appData.teams.forEach(team => {
                 dropdown.innerHTML += `<option value="${team.id}">${team.name}</option>`;
             });
@@ -231,7 +232,7 @@ function populateTeamDropdowns() {
     });
     
     // Populate owner filter
-    const owners = [...new Set(appData.actions.map(a => a.owner))].filter(o => o);
+    const owners = [...new Set(appData.actions.map(a => a.owner))].filter(o => o).sort();
     const ownerFilter = document.getElementById('filterActionOwner');
     if (ownerFilter) {
         ownerFilter.innerHTML = '<option value="">All Owners</option>';
@@ -286,27 +287,52 @@ function renderUpdates(filteredUpdates = null) {
     });
     
     let html = '';
-    Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a)).forEach(date => {
-        html += `<div class="date-group">
-            <h3 style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.875rem;">
-                ${formatDate(date)}
+    const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+    
+    sortedDates.forEach((date, dateIndex) => {
+        const isToday = date === new Date().toISOString().split('T')[0];
+        const isYesterday = date === new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        
+        let dateLabel = formatDate(date);
+        if (isToday) dateLabel = '📍 Today - ' + dateLabel;
+        else if (isYesterday) dateLabel = 'Yesterday - ' + dateLabel;
+        
+        html += `<div class="date-group" style="margin-bottom: 28px;">
+            <h3 style="margin-bottom: 16px; ${isToday ? 'color: var(--primary); font-weight: 700;' : ''}">
+                ${dateLabel}
+                <span style="font-weight: 400; opacity: 0.6; margin-left: 8px; font-size: 0.8rem;">(${grouped[date].length} update${grouped[date].length !== 1 ? 's' : ''})</span>
             </h3>`;
         
-        grouped[date].forEach(update => {
+        grouped[date].forEach((update, index) => {
             const team = appData.teams.find(t => t.id === update.teamId);
+            const categoryIcons = {
+                meeting: '🤝',
+                discussion: '💬',
+                review: '👀',
+                approval: '✅',
+                audit: '🔍',
+                planning: '📋',
+                issue: '🔧',
+                other: '📌'
+            };
+            
             html += `
-                <div class="update-item">
+                <div class="update-item" style="animation-delay: ${index * 0.05}s; border-left-color: ${team ? team.color : 'var(--primary)'};">
                     <div class="update-header">
                         <div class="update-meta">
-                            <span class="update-category category-${update.category}">${update.category}</span>
-                            ${team ? `<span class="update-team" style="background: ${team.color}20; color: ${team.color}">${team.name}</span>` : ''}
+                            <span class="update-category category-${update.category}">
+                                ${categoryIcons[update.category] || '📌'} ${update.category}
+                            </span>
+                            ${team ? `<span class="update-team" style="background: ${team.color}15; color: ${team.color}; border: 1px solid ${team.color}30;">${team.name}</span>` : ''}
                         </div>
                         <div class="update-actions">
-                            <button class="btn btn-small btn-secondary" onclick="deleteUpdate('${update.id}')">Delete</button>
+                            <button class="btn btn-small btn-secondary" onclick="event.stopPropagation(); deleteUpdate('${update.id}')" title="Delete this update">
+                                🗑️
+                            </button>
                         </div>
                     </div>
                     <p class="update-description">${update.description}</p>
-                    ${update.people ? `<p class="update-people"><strong>People:</strong> ${update.people}</p>` : ''}
+                    ${update.people ? `<p class="update-people"><strong>With:</strong> ${update.people}</p>` : ''}
                 </div>
             `;
         });
@@ -330,8 +356,9 @@ function filterUpdates() {
     const dateFilter = document.getElementById('filterDate').value;
     const teamFilter = document.getElementById('filterTeam').value;
     const categoryFilter = document.getElementById('filterCategory').value;
+    const sortBy = document.getElementById('sortUpdates').value;
     
-    let filtered = appData.updates;
+    let filtered = [...appData.updates];
     
     if (dateFilter) {
         filtered = filtered.filter(u => u.date === dateFilter);
@@ -343,6 +370,19 @@ function filterUpdates() {
         filtered = filtered.filter(u => u.category === categoryFilter);
     }
     
+    // Sort
+    switch (sortBy) {
+        case 'date-desc':
+            filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+            break;
+        case 'date-asc':
+            filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+            break;
+        case 'category':
+            filtered.sort((a, b) => a.category.localeCompare(b.category));
+            break;
+    }
+    
     renderUpdates(filtered);
 }
 
@@ -350,6 +390,7 @@ function clearFilters() {
     document.getElementById('filterDate').value = '';
     document.getElementById('filterTeam').value = '';
     document.getElementById('filterCategory').value = '';
+    document.getElementById('sortUpdates').value = 'date-desc';
     renderUpdates();
 }
 
@@ -402,19 +443,41 @@ function renderActions(filteredActions = null) {
         countEl.textContent = statusActions.length;
         
         if (statusActions.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: var(--text-muted); font-size: 0.75rem; padding: 20px;">No items</p>';
+            container.innerHTML = `<p style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 30px 20px; opacity: 0.7;">
+                ${status === 'completed' ? '✨ Complete some tasks!' : status === 'blocked' ? '🎉 No blockers!' : 'No items'}
+            </p>`;
             return;
         }
+        
+        // Sort by priority within each status
+        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        statusActions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
         
         container.innerHTML = statusActions.map(action => {
             const team = appData.teams.find(t => t.id === action.teamId);
             const isOverdue = action.dueDate && new Date(action.dueDate) < new Date() && action.status !== 'completed';
+            const daysUntilDue = action.dueDate ? Math.ceil((new Date(action.dueDate) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+            
+            let dueText = '';
+            if (action.dueDate) {
+                if (isOverdue) {
+                    dueText = `⚠️ Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? 's' : ''}`;
+                } else if (daysUntilDue === 0) {
+                    dueText = '📅 Due today';
+                } else if (daysUntilDue === 1) {
+                    dueText = '📅 Due tomorrow';
+                } else {
+                    dueText = `📅 ${formatDate(action.dueDate, 'short')}`;
+                }
+            }
             
             return `
                 <div class="action-card priority-${action.priority}" onclick="openEditActionModal('${action.id}')">
+                    <span class="priority-badge ${action.priority}">${action.priority}</span>
                     <div class="action-title">${action.title}</div>
                     <div class="action-owner">👤 ${action.owner}</div>
-                    ${action.dueDate ? `<div class="action-due ${isOverdue ? 'overdue' : ''}">📅 ${formatDate(action.dueDate, 'short')}</div>` : ''}
+                    ${team ? `<div style="font-size: 0.7rem; color: ${team.color}; margin-top: 6px; font-weight: 600;">● ${team.name}</div>` : ''}
+                    ${action.dueDate ? `<div class="action-due ${isOverdue ? 'overdue' : ''}">${dueText}</div>` : ''}
                     ${action.jira ? `<span class="action-jira">${action.jira}</span>` : ''}
                 </div>
             `;
@@ -480,8 +543,10 @@ function filterActions() {
     const statusFilter = document.getElementById('filterActionStatus').value;
     const ownerFilter = document.getElementById('filterActionOwner').value;
     const priorityFilter = document.getElementById('filterActionPriority').value;
+    const teamFilter = document.getElementById('filterActionTeam')?.value || '';
+    const sortBy = document.getElementById('sortActions').value;
     
-    let filtered = appData.actions;
+    let filtered = [...appData.actions];
     
     if (statusFilter) {
         filtered = filtered.filter(a => a.status === statusFilter);
@@ -492,6 +557,30 @@ function filterActions() {
     if (priorityFilter) {
         filtered = filtered.filter(a => a.priority === priorityFilter);
     }
+    if (teamFilter) {
+        filtered = filtered.filter(a => a.teamId === teamFilter);
+    }
+    
+    // Sort
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    switch (sortBy) {
+        case 'priority':
+            filtered.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+            break;
+        case 'due-date':
+            filtered.sort((a, b) => {
+                if (!a.dueDate) return 1;
+                if (!b.dueDate) return -1;
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            });
+            break;
+        case 'owner':
+            filtered.sort((a, b) => a.owner.localeCompare(b.owner));
+            break;
+        case 'created':
+            filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            break;
+    }
     
     renderActions(filtered);
 }
@@ -500,6 +589,10 @@ function clearActionFilters() {
     document.getElementById('filterActionStatus').value = '';
     document.getElementById('filterActionOwner').value = '';
     document.getElementById('filterActionPriority').value = '';
+    if (document.getElementById('filterActionTeam')) {
+        document.getElementById('filterActionTeam').value = '';
+    }
+    document.getElementById('sortActions').value = 'priority';
     renderActions();
 }
 

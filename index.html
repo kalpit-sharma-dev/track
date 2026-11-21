@@ -144,7 +144,12 @@
                         <option value="issue">Issue Resolution</option>
                         <option value="other">Other</option>
                     </select>
-                    <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+                    <select id="sortUpdates" onchange="filterUpdates()">
+                        <option value="date-desc">Newest First</option>
+                        <option value="date-asc">Oldest First</option>
+                        <option value="category">By Category</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="clearFilters()">Clear Filters</button>
                 </div>
 
                 <div class="updates-list" id="dailyUpdatesList">
@@ -172,11 +177,20 @@
                     </select>
                     <select id="filterActionPriority" onchange="filterActions()">
                         <option value="">All Priorities</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
+                        <option value="high">High Priority</option>
+                        <option value="medium">Medium Priority</option>
+                        <option value="low">Low Priority</option>
                     </select>
-                    <button class="btn btn-secondary" onclick="clearActionFilters()">Clear</button>
+                    <select id="filterActionTeam" onchange="filterActions()">
+                        <option value="">All Teams</option>
+                    </select>
+                    <select id="sortActions" onchange="filterActions()">
+                        <option value="priority">By Priority</option>
+                        <option value="due-date">By Due Date</option>
+                        <option value="owner">By Owner</option>
+                        <option value="created">By Created Date</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="clearActionFilters()">Clear Filters</button>
                 </div>
 
                 <div class="actions-board">
