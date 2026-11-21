@@ -1,0 +1,6 @@
+{
+  "jira_base_url": "https://your-company.atlassian.net",
+  "jira_auth_token": "your-jira-api-token",
+  "pr_tool_base_url": "https://api.github.com/repos/owner/repo",
+  "pr_tool_auth_token": "your-github-token"
+}
