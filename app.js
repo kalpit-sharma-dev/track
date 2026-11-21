@@ -515,7 +515,8 @@ function renderUpdates(filteredUpdates = null) {
         
         let dateLabel = formatDate(date);
         if (isToday) dateLabel = '📍 Today - ' + dateLabel;
-        else if (isYesterday) dateLabel = 'Yesterday - ' + dateLabel;
+        else if (isYesterday) dateLabel = '📅 Yesterday - ' + dateLabel;
+        else dateLabel = '📅 ' + dateLabel;
         
         html += `<div class="date-group" style="margin-bottom: 28px;">
             <h3 style="margin-bottom: 16px; ${isToday ? 'color: var(--primary); font-weight: 700;' : ''}">
@@ -1219,7 +1220,7 @@ function renderTeamSummary() {
                     <strong>${team.name}</strong>
                 </div>
                 <div class="team-summary-stats">
-                    <span><strong>${updates}</strong> updates</span>
+                    <span><strong>${updates}</strong> update${updates !== 1 ? 's' : ''}</span>
                     <span><strong>${actions}</strong> pending</span>
                 </div>
             </div>
