@@ -2,7 +2,7 @@
 
 A modern, beautiful web-based dashboard for tech leads to track daily activities, manage action items, monitor team progress, and generate weekly reports for management.
 
-![Dashboard Preview](https://img.shields.io/badge/Status-Ready-brightgreen) ![Platform](https://img.shields.io/badge/Platform-Mac%20%7C%20Windows-blue) ![No Server](https://img.shields.io/badge/Server-Not%20Required-orange)
+![Dashboard Preview](https://img.shields.io/badge/Status-Ready-brightgreen) ![Platform](https://img.shields.io/badge/Platform-Mac%20%7C%20Windows-blue) ![Notes file](https://img.shields.io/badge/Notes-tracker--data.json-blue)
 
 ---
 
@@ -75,28 +75,17 @@ cd track
 
 #### Step 2: Run the App
 
-**Method 1: Double-Click (Easiest)**
+**Double-click `start.command`**
 
-1. Open Finder
-2. Navigate to the `track` folder
-3. Double-click `index.html`
-4. The app opens in your default browser ✅
+1. Open Finder and open the `track` folder
+2. Double-click `start.command`
+3. If macOS asks, click **Open**
+4. Your browser opens at **http://127.0.0.1:8080**
+5. Your notes are written to **`tracker-data.json`** in that same folder
 
-**Method 2: Local Server (Recommended for best experience)**
+To stop the app, click the Terminal window and press `Ctrl + C`.
 
-```bash
-# Navigate to the app folder
-cd ~/Documents/track
-
-# Start a local server
-python3 -m http.server 8080
-
-# You'll see: "Serving HTTP on :: port 8080 ..."
-```
-
-Open your browser and go to: **http://localhost:8080**
-
-To stop the server: Press `Ctrl + C` in Terminal
+You can also double-click `index.html`. That opens the app, but the notes stay inside the browser and you will not see `tracker-data.json`.
 
 #### Step 3: Create Desktop Shortcut (Optional)
 
@@ -136,7 +125,9 @@ cd track
 4. Open File Explorer → Downloads → Right-click `track-main.zip` → **"Extract All"**
 5. Move the extracted folder to Documents
 
-#### Step 2: Install Python (Optional - for local server)
+#### Step 2: Install Python
+
+Python creates `tracker-data.json`, the file that holds your notes.
 
 1. Download Python from: https://www.python.org/downloads/
 2. Run the installer
@@ -145,34 +136,16 @@ cd track
 
 #### Step 3: Run the App
 
-**Method 1: Double-Click (Easiest)**
+**Double-click `start.bat`**
 
-1. Open File Explorer
-2. Navigate to the `track` folder
-3. Double-click `index.html`
-4. The app opens in your default browser ✅
+1. Open File Explorer and open the `track` folder
+2. Double-click `start.bat`
+3. Your browser opens at **http://127.0.0.1:8080**
+4. Your notes are written to **`tracker-data.json`** in that same folder
 
-**Method 2: Local Server (Recommended)**
+To stop the app, click the command window and press `Ctrl + C`.
 
-Open Command Prompt or PowerShell:
-
-```cmd
-# Navigate to the app folder
-cd %USERPROFILE%\Documents\track
-
-# Start a local server
-python -m http.server 8080
-```
-
-If `python` doesn't work, try `python3` or `py`:
-
-```cmd
-py -m http.server 8080
-```
-
-Open your browser and go to: **http://localhost:8080**
-
-To stop the server: Press `Ctrl + C`
+You can also double-click `index.html`. That opens the app, but the notes stay inside the browser and you will not see `tracker-data.json`.
 
 #### Step 4: Create Desktop Shortcut (Optional)
 
@@ -400,39 +373,19 @@ The label next to the menu shows the exact start and end dates. Charts, teams, p
 
 ## Data Storage & Backup
 
-### Where Data is Stored
+Your notes are saved in a real file when you start the app with `start.command` (Mac) or `start.bat` (Windows).
 
-| Location | Description |
-|----------|-------------|
-| **Browser localStorage** | Primary storage - persists forever |
-| **Backup JSON files** | Downloaded when you click "Download Backup" |
+| What you see | Where it is |
+| --- | --- |
+| **`tracker-data.json`** | In the same folder as `index.html`. Open the `track` folder in Finder or File Explorer. |
+| Sidebar line | **File: tracker-data.json in this app folder** |
+| **Download Backup** | A dated copy you can keep somewhere else |
 
-### Your Data Survives
+The file is updated every time you add or edit a note. Closing the browser, restarting the laptop, or updating the app does not remove it.
 
-✅ Closing the browser tab  
-✅ Restarting the browser  
-✅ Restarting your computer  
-✅ Restarting the app  
+Double-clicking `index.html` by itself does not create that file. The notes stay in that browser only. Start the app with `start.command` or `start.bat`, and the app copies those browser notes into `tracker-data.json`.
 
-### Your Data is Lost If
-
-❌ You clear browser data/cache  
-❌ You use a different browser  
-❌ You use Incognito/Private mode  
-
-### Backup Workflow
-
-1. **Regular backups**: Click **"💾 Download Backup"** in the sidebar weekly
-2. **Store safely**: Keep the JSON files in a folder like `Documents/TrackerBackups/`
-3. **Restore anytime**: Click **"📂 Restore from Backup"** to load from a JSON file
-
-### Recommended Backup Schedule
-
-| Frequency | Action |
-|-----------|--------|
-| **Daily** | Data auto-saves to browser |
-| **Weekly** | Download a backup file |
-| **Monthly** | Archive backups to cloud storage |
+**Restore Backup** replaces everything from a JSON file you choose. Use it when you are putting a saved copy back.
 
 ---
 
@@ -480,11 +433,15 @@ You can add, edit, or delete teams as needed.
 
 ```
 track/
-├── index.html      # Main application HTML
-├── styles.css      # All styling (including dark mode)
-├── app.js          # Application logic
-├── README.md       # This documentation
-└── track.pdf       # Original requirements
+├── index.html           # The tracker
+├── styles.css           # Styling
+├── app.js               # Tracker behavior
+├── server.py            # Saves tracker-data.json
+├── start.command        # Mac: open the app and keep the file
+├── start.bat            # Windows: open the app and keep the file
+├── tracker-data.json    # Your notes. Created the first time you run the app
+├── README.md
+└── track.pdf
 ```
 
 ---
@@ -518,11 +475,11 @@ brew install python3
 - Reinstall Python from https://www.python.org/downloads/
 - Make sure to check "Add Python to PATH"
 
-### Data not saving?
+### I cannot see a saved file
 
-1. Make sure you're not in Incognito/Private browsing mode
-2. Check if localStorage is enabled in your browser
-3. Try a different browser
+Start the app with `start.command` on Mac or `start.bat` on Windows. Then look in the `track` folder for `tracker-data.json`. The sidebar says **File: tracker-data.json in this app folder** when that file is being updated.
+
+Double-clicking `index.html` keeps notes in the browser only.
 
 ### App looks broken?
 
@@ -533,9 +490,10 @@ brew install python3
 ### Port already in use?
 
 ```bash
-# Use a different port
-python3 -m http.server 3000
+python3 server.py --port 3000
 ```
+
+Then open **http://127.0.0.1:3000**.
 
 ---
 

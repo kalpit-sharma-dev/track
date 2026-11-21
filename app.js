@@ -15,46 +15,77 @@ let appData = {
 // Auto-save file path (for reference)
 const DATA_FILE_NAME = 'tech-lead-tracker-data.json';
 
+let dataFileAvailable = false;
+let fileSaveOk = false;
+let fileSavePending = false;
+const DATA_API = '/api/data';
+
 // Initialize App
-document.addEventListener('DOMContentLoaded', () => {
-    loadData();
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadData();
     initializeApp();
     setupNavigation();
     updateDashboard();
     populateTeamDropdowns();
     setDefaultDates();
-    updateLastSavedIndicator();
     applyTheme();
     checkRecurringActions();
     populateTagSuggestions();
+    updateLastSavedIndicator();
 });
 
-// Load data from localStorage (with fallback to sessionStorage backup)
-function loadData() {
-    let saved = localStorage.getItem('techLeadTracker');
-    
-    // If localStorage is empty, try sessionStorage backup
-    if (!saved) {
-        saved = sessionStorage.getItem('techLeadTrackerBackup');
-        if (saved) {
-            console.log('Restored from session backup');
-        }
+function readStoredData() {
+    const saved = localStorage.getItem('techLeadTracker') || sessionStorage.getItem('techLeadTrackerBackup');
+    if (!saved) return null;
+    try {
+        const parsed = JSON.parse(saved);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (e) {
+        console.error('Error parsing saved data:', e);
+        return null;
     }
-    
-    if (saved) {
-        try {
-            appData = JSON.parse(saved);
-            // Ensure all required arrays exist
-            if (!appData.updates) appData.updates = [];
-            if (!appData.actions) appData.actions = [];
-            if (!appData.teams) appData.teams = [];
-        } catch (e) {
-            console.error('Error parsing saved data:', e);
-            initializeDefaultData();
+}
+
+function savedAt(data) {
+    const time = data && data.lastSaved ? Date.parse(data.lastSaved) : 0;
+    return Number.isNaN(time) ? 0 : time;
+}
+
+function hasTrackerData(data) {
+    if (!data || typeof data !== 'object') return false;
+    return ['updates', 'actions', 'teams'].some(key => Array.isArray(data[key]) && data[key].length);
+}
+
+// Load the newest copy: tracker-data.json when the local server is running, otherwise this browser.
+async function loadData() {
+    const localData = readStoredData();
+    let fileData = null;
+
+    try {
+        const response = await fetch(DATA_API, { cache: 'no-store' });
+        if (response.ok) {
+            dataFileAvailable = true;
+            if (response.status !== 204) {
+                const parsed = await response.json();
+                if (hasTrackerData(parsed)) fileData = parsed;
+            }
         }
+    } catch (e) {
+        dataFileAvailable = false;
+    }
+
+    if (fileData && localData && hasTrackerData(localData)) {
+        appData = savedAt(fileData) >= savedAt(localData) ? fileData : localData;
+    } else if (fileData) {
+        appData = fileData;
+    } else if (localData && hasTrackerData(localData)) {
+        appData = localData;
     } else {
         initializeDefaultData();
     }
+
+    ensureDataShape();
+    storeData(false);
 }
 
 // Initialize with default teams
@@ -76,12 +107,39 @@ function initializeDefaultData() {
             darkMode: false
         }
     };
-    saveData();
+}
+
+function ensureDataShape() {
+    if (!appData || typeof appData !== 'object') appData = {};
+    if (!Array.isArray(appData.updates)) appData.updates = [];
+    if (!Array.isArray(appData.actions)) appData.actions = [];
+    if (!Array.isArray(appData.teams)) appData.teams = [];
+    if (!Array.isArray(appData.tags)) appData.tags = [];
+    if (!appData.settings || typeof appData.settings !== 'object') appData.settings = { darkMode: false };
+    appData.updates.forEach(update => {
+        if (!Array.isArray(update.tags)) update.tags = [];
+        if (!update.description) update.description = '';
+        if (!update.people) update.people = '';
+    });
+    appData.actions.forEach(action => {
+        if (!action.priority) action.priority = 'medium';
+        if (!action.status) action.status = 'pending';
+        if (!action.owner) action.owner = 'Me';
+        if (!action.title) action.title = 'Untitled task';
+    });
+    appData.teams.forEach(team => {
+        team.color = safeColor(team.color);
+    });
+}
+
+function safeColor(value) {
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || '')) ? value : '#6366F1';
 }
 
 // ==================== DARK MODE ====================
 
 function toggleDarkMode() {
+    ensureDataShape();
     appData.settings.darkMode = !appData.settings.darkMode;
     applyTheme();
     saveData();
@@ -300,7 +358,7 @@ function populateTagSuggestions() {
     });
     
     container.innerHTML = Array.from(allTags).slice(0, 8).map(tag => 
-        `<span class="tag-suggestion" onclick="addTagToInput('${tag}')">${tag}</span>`
+        `<span class="tag-suggestion" onclick="addTagToInput(decodeURIComponent('${encodeURIComponent(tag)}'))">${escapeHtml(tag)}</span>`
     ).join('');
 }
 
@@ -315,33 +373,64 @@ function addTagToInput(tag) {
 
 // Save data to localStorage and update indicator
 function saveData() {
+    storeData(true);
+}
+
+function storeData(updateTimestamp) {
     searchIndex = null;
-    appData.lastSaved = new Date().toISOString();
-    localStorage.setItem('techLeadTracker', JSON.stringify(appData));
+    ensureDataShape();
+    if (updateTimestamp || !appData.lastSaved) appData.lastSaved = new Date().toISOString();
+    const text = JSON.stringify(appData);
+    localStorage.setItem('techLeadTracker', text);
+    sessionStorage.setItem('techLeadTrackerBackup', text);
     updateLastSavedIndicator();
-    
-    // Also save to a downloadable file location for extra safety
-    saveToFile();
+    writeDataFile(text);
+}
+
+function writeDataFile(text) {
+    if (!dataFileAvailable) return;
+    fileSavePending = true;
+    updateLastSavedIndicator();
+    fetch(DATA_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: text
+    }).then(response => {
+        fileSavePending = false;
+        fileSaveOk = response.ok;
+        updateLastSavedIndicator();
+    }).catch(() => {
+        fileSavePending = false;
+        fileSaveOk = false;
+        updateLastSavedIndicator();
+    });
 }
 
 // Update the last saved indicator in UI
 function updateLastSavedIndicator() {
     const indicator = document.getElementById('lastSavedIndicator');
-    if (indicator && appData.lastSaved) {
-        const savedDate = new Date(appData.lastSaved);
-        const timeStr = savedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        const dateStr = savedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        indicator.textContent = `Last saved: ${dateStr} ${timeStr}`;
+    const location = document.getElementById('saveLocation');
+    if (!indicator) return;
+    const savedDate = appData.lastSaved ? new Date(appData.lastSaved) : null;
+    const timeStr = savedDate ? savedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
+    const dateStr = savedDate ? savedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    if (dataFileAvailable && fileSavePending) {
+        indicator.textContent = 'Saving tracker-data.json…';
+        indicator.style.color = '#64748B';
+        if (location) location.textContent = 'File: tracker-data.json in this app folder';
+    } else if (dataFileAvailable && fileSaveOk) {
+        indicator.textContent = `Saved ${dateStr} ${timeStr}`;
         indicator.style.color = '#10B981';
+        if (location) location.textContent = 'File: tracker-data.json in this app folder';
+    } else if (dataFileAvailable) {
+        indicator.textContent = 'Saved in this browser. The file update failed.';
+        indicator.style.color = '#F59E0B';
+        if (location) location.textContent = 'tracker-data.json was not updated';
+    } else if (savedDate) {
+        indicator.textContent = `Saved in this browser ${dateStr} ${timeStr}`;
+        indicator.style.color = '#10B981';
+        if (location) location.textContent = 'No file yet. Double-click start.command on Mac, or start.bat on Windows.';
     }
-}
-
-// Save data to a JSON file (creates downloadable backup)
-function saveToFile() {
-    const dataStr = JSON.stringify(appData, null, 2);
-    
-    // Store in sessionStorage as immediate backup
-    sessionStorage.setItem('techLeadTrackerBackup', dataStr);
 }
 
 // Manual save to file (download)
@@ -351,7 +440,7 @@ function downloadBackup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tech-lead-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `tech-lead-tracker-backup-${localDateString()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     
@@ -385,19 +474,6 @@ function showDataSummary() {
         console.log(`📊 Data loaded: ${updates} updates, ${actions} action items, ${teams} teams`);
     }
     
-    // Reminder to backup if there's significant data and no recent backup
-    if ((updates > 10 || actions > 5) && appData.lastSaved) {
-        const lastSave = new Date(appData.lastSaved);
-        const daysSinceBackup = (new Date() - lastSave) / (1000 * 60 * 60 * 24);
-        
-        if (daysSinceBackup > 7) {
-            setTimeout(() => {
-                if (confirm(`You have ${updates} updates and ${actions} action items.\n\nIt's been ${Math.floor(daysSinceBackup)} days since your last backup.\n\nWould you like to download a backup now?`)) {
-                    downloadBackup();
-                }
-            }, 2000);
-        }
-    }
 }
 
 // Setup navigation
@@ -633,13 +709,13 @@ function renderUpdates(filteredUpdates = null) {
                 : '';
             
             html += `
-                <div class="update-item${index > 8 ? ' no-animate' : ''}" style="border-left-color: ${team ? team.color : 'var(--primary)'}; cursor: pointer;" onclick="openEditUpdateModal('${update.id}')">
+                <div class="update-item${index > 8 ? ' no-animate' : ''}" style="border-left-color: ${team ? safeColor(team.color) : 'var(--primary)'}; cursor: pointer;" onclick="openEditUpdateModal('${update.id}')">
                     <div class="update-header">
                         <div class="update-meta">
                             <span class="update-category category-${update.category}">
                                 ${categoryIcons[update.category] || '📌'} ${update.category}
                             </span>
-                            ${team ? `<span class="update-team" style="background: ${team.color}15; color: ${team.color}; border: 1px solid ${team.color}30;">${escapeHtml(team.name)}</span>` : ''}
+                            ${team ? `<span class="update-team" style="background: ${safeColor(team.color)}15; color: ${safeColor(team.color)}; border: 1px solid ${safeColor(team.color)}30;">${escapeHtml(team.name)}</span>` : ''}
                         </div>
                         <div class="update-actions">
                             <button class="btn btn-small btn-primary" onclick="event.stopPropagation(); openEditUpdateModal('${update.id}')" title="Edit this update">
@@ -956,7 +1032,7 @@ function renderActions(filteredActions = null) {
                     <span class="priority-badge ${action.priority}">${action.priority}</span>
                     <div class="action-title">${escapeHtml(action.title)}</div>
                     <div class="action-owner">👤 ${escapeHtml(action.owner)}</div>
-                    ${team ? `<div style="font-size: 0.7rem; color: ${team.color}; margin-top: 6px; font-weight: 600;">● ${escapeHtml(team.name)}</div>` : ''}
+                    ${team ? `<div style="font-size: 0.7rem; color: ${safeColor(team.color)}; margin-top: 6px; font-weight: 600;">● ${escapeHtml(team.name)}</div>` : ''}
                     ${action.dueDate ? `<div class="action-due ${isOverdue ? 'overdue' : ''}">${dueText}</div>` : ''}
                     ${action.jira ? `<span class="action-jira">${escapeHtml(action.jira)}</span>` : ''}
                     ${action.recurring ? `<span class="recurring-badge">${action.recurring}</span>` : ''}
@@ -1135,7 +1211,7 @@ function renderTeams() {
         
         return `
             <div class="team-card">
-                <div class="team-header" style="background: ${team.color}">
+                <div class="team-header" style="background: ${safeColor(team.color)}">
                     <h3>${escapeHtml(team.name)}</h3>
                     <p>${escapeHtml(team.description || 'No description')}</p>
                 </div>
@@ -1277,7 +1353,7 @@ function renderRecentUpdates() {
         <div class="recent-update-item" style="cursor: pointer" onclick="showView('daily'); setTimeout(() => openEditUpdateModal('${update.id}'), 100)">
             <div class="recent-update-date">${formatDate(update.date, 'short')}</div>
             <div class="recent-update-content">
-                <div class="recent-update-title">${escapeHtml(update.description.substring(0, 60))}${update.description.length > 60 ? '...' : ''}</div>
+                <div class="recent-update-title">${escapeHtml((update.description || '').substring(0, 60))}${(update.description || '').length > 60 ? '...' : ''}</div>
                 <div class="recent-update-category">${update.category}</div>
             </div>
         </div>
@@ -1325,7 +1401,7 @@ function renderTeamSummary() {
         return `
             <div class="team-summary-item" style="cursor: pointer" onclick="showView('teams'); setTimeout(() => openEditTeamModal('${team.id}'), 100)">
                 <div class="team-summary-name">
-                    <span class="team-color-dot" style="background: ${team.color}"></span>
+                    <span class="team-color-dot" style="background: ${safeColor(team.color)}"></span>
                     <strong>${escapeHtml(team.name)}</strong>
                 </div>
                 <div class="team-summary-stats">
@@ -1470,6 +1546,10 @@ function exportWeeklyReport() {
     
     // Create a printable version
     const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        alert('Allow pop-ups for this page, then export the weekly report again.');
+        return;
+    }
     printWindow.document.write(`
         <!DOCTYPE html>
         <html>
@@ -1575,11 +1655,7 @@ function importData(event) {
             
             if (confirm(`This will import:\n- ${updateCount} daily updates\n- ${actionCount} action items\n- ${teamCount} teams\n\nThis will replace all existing data. Continue?`)) {
                 appData = imported;
-                // Ensure all arrays exist
-                if (!appData.updates) appData.updates = [];
-                if (!appData.actions) appData.actions = [];
-                if (!appData.teams) appData.teams = [];
-                
+                ensureDataShape();
                 saveData();
                 initializeApp();
                 updateDashboard();
@@ -1975,13 +2051,18 @@ function renderCategoryChart(updates) {
         other: '#6B7280'
     };
     
+    if (!updates.length) {
+        container.innerHTML = '<p class="empty-state" style="padding: 40px;">No updates for this period</p>';
+        return;
+    }
+
     const maxValue = Math.max(...Object.values(categoryCount), 1);
     
     container.innerHTML = `
         <div class="horizontal-chart">
             ${Object.entries(categoryCount).sort((a, b) => b[1] - a[1]).map(([cat, count]) => `
                 <div class="horizontal-bar-row">
-                    <div class="horizontal-bar-label">${cat}</div>
+                    <div class="horizontal-bar-label">${escapeHtml(cat)}</div>
                     <div class="horizontal-bar-track">
                         <div class="horizontal-bar-fill" style="width: ${(count / maxValue) * 100}%; background: ${colors[cat] || '#6B7280'}">
                             ${count}
@@ -2003,7 +2084,7 @@ function renderTeamChart(updates) {
             if (team) {
                 teamCount[team.name] = {
                     count: (teamCount[team.name]?.count || 0) + 1,
-                    color: team.color
+                    color: safeColor(team.color)
                 };
             }
         }
@@ -2020,9 +2101,9 @@ function renderTeamChart(updates) {
         <div class="horizontal-chart">
             ${Object.entries(teamCount).sort((a, b) => b[1].count - a[1].count).map(([name, data]) => `
                 <div class="horizontal-bar-row">
-                    <div class="horizontal-bar-label">${name}</div>
+                    <div class="horizontal-bar-label">${escapeHtml(name)}</div>
                     <div class="horizontal-bar-track">
-                        <div class="horizontal-bar-fill" style="width: ${(data.count / maxValue) * 100}%; background: ${data.color}">
+                        <div class="horizontal-bar-fill" style="width: ${(data.count / maxValue) * 100}%; background: ${safeColor(data.color)}">
                             ${data.count}
                         </div>
                     </div>
@@ -2106,7 +2187,7 @@ function renderTopPeople(updates) {
     container.innerHTML = sorted.map(([name, count], index) => `
         <div class="top-list-item">
             <div class="top-list-rank">${index + 1}</div>
-            <div class="top-list-name">${name}</div>
+            <div class="top-list-name">${escapeHtml(name)}</div>
             <div class="top-list-count">${count} interaction${count !== 1 ? 's' : ''}</div>
         </div>
     `).join('');
@@ -2195,7 +2276,7 @@ function renderTagsCloud(updates = appData.updates) {
     
     container.innerHTML = sorted.map(([tag, count]) => {
         const size = Math.ceil((count / maxCount) * 5);
-        return `<span class="cloud-tag size-${size}" onclick="searchByTag('${tag}')">#${tag} (${count})</span>`;
+        return `<span class="cloud-tag size-${size}" onclick="searchByTag(decodeURIComponent('${encodeURIComponent(tag)}'))">#${escapeHtml(tag)} (${count})</span>`;
     }).join('');
 }
 
@@ -2203,6 +2284,10 @@ function renderTagsCloud(updates = appData.updates) {
 
 function copyReportToClipboard() {
     const weekInput = document.getElementById('weekSelector').value;
+    if (!weekInput || !weekInput.includes('-W')) {
+        alert('Pick a week first.');
+        return;
+    }
     const [year, week] = weekInput.split('-W');
     
     // Build plain text report
