@@ -52,11 +52,18 @@
             </ul>
             <div class="sidebar-footer">
                 <div id="lastSavedIndicator" class="last-saved">Data not yet saved</div>
-                <button class="btn btn-primary" onclick="exportData()" title="Download a backup file to keep your data safe">
+                <button class="btn btn-primary" onclick="document.getElementById('textImportFile').click()" title="Add teams, daily updates, and action items from a text file. Existing data is kept.">
+                    <span>📄</span> Upload Notes
+                </button>
+                <button class="btn btn-secondary" onclick="downloadImportTemplate()" title="Download the text format used by Upload Notes">
+                    <span>📋</span> Notes Template
+                </button>
+                <input type="file" id="textImportFile" accept=".txt,.md,text/plain" style="display:none" onchange="importTextFile(event)">
+                <button class="btn btn-secondary" onclick="exportData()" title="Download a backup file to keep your data safe">
                     <span>💾</span> Download Backup
                 </button>
-                <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()" title="Restore data from a backup file">
-                    <span>📂</span> Restore from Backup
+                <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()" title="Replace all data from a JSON backup">
+                    <span>📂</span> Restore Backup
                 </button>
                 <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
             </div>
@@ -270,11 +277,18 @@
                 <div class="view-header">
                     <h2>Analytics & Insights</h2>
                     <div class="header-actions">
+                        <p id="analyticsPeriodLabel" class="date-display"></p>
                         <select id="analyticsRange" class="styled-select" onchange="updateAnalytics()">
                             <option value="7">Last 7 days</option>
                             <option value="14">Last 14 days</option>
                             <option value="30" selected>Last 30 days</option>
                             <option value="90">Last 90 days</option>
+                            <option value="thisQuarter">This quarter</option>
+                            <option value="lastQuarter">Last quarter</option>
+                            <option value="thisHalf">This half year</option>
+                            <option value="lastHalf">Last half year</option>
+                            <option value="thisYear">This year</option>
+                            <option value="lastYear">Last year</option>
                         </select>
                     </div>
                 </div>
@@ -726,6 +740,17 @@
         </div>
     </div>
 
+    <div id="importResultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Notes upload</h3>
+                <button class="close-btn" onclick="closeModal('importResultModal')">&times;</button>
+            </div>
+            <div id="importResultBody" class="import-result"></div>
+        </div>
+    </div>
+
+    <script src="import-parser.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

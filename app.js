@@ -1480,6 +1480,156 @@ function importData(event) {
     event.target.value = '';
 }
 
+const IMPORT_TEAM_COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#0EA5E9', '#14B8A6'];
+
+function downloadImportTemplate() {
+    const blob = new Blob([IMPORT_TEMPLATE], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'daily-tracker-notes-template.txt';
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
+function importTextFile(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const text = String(e.target.result || '');
+        const trimmed = text.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            alert('This file is a JSON backup. Use Restore Backup for JSON files. Upload Notes reads the text template.');
+            return;
+        }
+
+        const parsed = parseTextImport(text);
+        const plan = planTextImport(appData, parsed);
+        const hasAdditions = plan.newTeams.length || plan.memberAdds.length || plan.newUpdates.length || plan.newActions.length;
+
+        if (!hasAdditions) {
+            showImportResult(plan, false);
+            return;
+        }
+
+        const lines = [
+            'This adds records only. Nothing already saved is changed or deleted.',
+            '',
+            `Daily updates to add: ${plan.newUpdates.length} (${plan.skippedUpdates} already saved, skipped)`,
+            `Action items to add: ${plan.newActions.length} (${plan.skippedActions} already saved, skipped)`,
+            `Teams to add: ${plan.newTeams.length} (${plan.skippedTeams} existing teams left unchanged)`,
+            `Existing teams getting new members: ${plan.memberAdds.length}`
+        ];
+        if (plan.errors.length) {
+            lines.push('', 'Blocks that will not be imported:');
+            plan.errors.slice(0, 8).forEach(error => lines.push(`- ${error}`));
+        }
+        lines.push('', 'Add these records?');
+        if (!confirm(lines.join('\n'))) return;
+
+        applyTextImportPlan(plan);
+        showImportResult(plan, true);
+    };
+    reader.readAsText(file);
+}
+
+function applyTextImportPlan(plan) {
+    if (!appData.tags) appData.tags = [];
+
+    plan.newTeams.forEach(team => {
+        appData.teams.push({
+            id: generateId(),
+            name: team.name,
+            description: team.description || '',
+            members: team.members || '',
+            color: team.color && team.color !== '#6366F1'
+                ? team.color
+                : IMPORT_TEAM_COLORS[appData.teams.length % IMPORT_TEAM_COLORS.length]
+        });
+    });
+
+    plan.memberAdds.forEach(addition => {
+        const team = appData.teams.find(item => item.name.toLowerCase() === addition.teamName.toLowerCase());
+        if (!team) return;
+        const members = team.members ? team.members.split(',').map(name => name.trim()).filter(Boolean) : [];
+        addition.members.forEach(member => {
+            if (!members.some(name => name.toLowerCase() === member.toLowerCase())) members.push(member);
+        });
+        team.members = members.join(', ');
+    });
+
+    plan.newUpdates.forEach(update => {
+        const team = appData.teams.find(item => item.name.toLowerCase() === (update.teamName || '').toLowerCase());
+        appData.updates.push({
+            id: generateId(),
+            date: update.date,
+            category: update.category,
+            teamId: team ? team.id : '',
+            description: update.description,
+            people: update.people,
+            tags: update.tags,
+            createdAt: new Date().toISOString()
+        });
+        update.tags.forEach(tag => {
+            if (!appData.tags.includes(tag)) appData.tags.push(tag);
+        });
+    });
+
+    plan.newActions.forEach(action => {
+        const team = appData.teams.find(item => item.name.toLowerCase() === (action.teamName || '').toLowerCase());
+        appData.actions.push({
+            id: generateId(),
+            title: action.title,
+            description: action.notes || '',
+            owner: action.owner,
+            priority: action.priority,
+            dueDate: action.dueDate,
+            teamId: team ? team.id : '',
+            jira: action.jira,
+            recurring: action.recurring,
+            status: action.status,
+            notes: action.notes,
+            createdAt: new Date().toISOString(),
+            completedAt: action.status === 'completed' ? new Date().toISOString() : null,
+            lastRecurringCreated: null
+        });
+    });
+
+    saveData();
+    initializeApp();
+    updateDashboard();
+    populateTeamDropdowns();
+    populateTagSuggestions();
+}
+
+function showImportResult(plan, applied) {
+    const body = document.getElementById('importResultBody');
+    const memberLines = plan.memberAdds.map(addition => `${addition.teamName}: ${addition.members.join(', ')}`);
+    body.innerHTML = `
+        <p>${applied ? 'New records were added. Existing records were left as they are.' : 'Nothing new was added. Matching records are already saved.'}</p>
+        <ul>
+            <li>${plan.newUpdates.length} daily update${plan.newUpdates.length === 1 ? '' : 's'} added, ${plan.skippedUpdates} skipped</li>
+            <li>${plan.newActions.length} action item${plan.newActions.length === 1 ? '' : 's'} added, ${plan.skippedActions} skipped</li>
+            <li>${plan.newTeams.length} team${plan.newTeams.length === 1 ? '' : 's'} added, ${plan.skippedTeams} existing team${plan.skippedTeams === 1 ? '' : 's'} unchanged</li>
+        </ul>
+        ${memberLines.length ? `<h4>Members added</h4><ul>${memberLines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>` : ''}
+        ${plan.errors.length ? `<h4>Not imported</h4><ul>${plan.errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : ''}
+        <div class="form-actions"><button type="button" class="btn btn-primary" onclick="closeModal('importResultModal')">Done</button></div>
+    `;
+    openModal('importResultModal');
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 // Check data integrity on visibility change (tab focus)
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
@@ -1521,64 +1671,174 @@ document.addEventListener('keydown', (e) => {
 
 // ==================== ANALYTICS ====================
 
-function updateAnalytics() {
-    const days = parseInt(document.getElementById('analyticsRange').value);
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    
-    // Filter data for the period
-    const periodUpdates = appData.updates.filter(u => new Date(u.date) >= startDate);
-    const periodActions = appData.actions.filter(a => new Date(a.createdAt) >= startDate);
-    
-    renderActivityChart(periodUpdates, days);
-    renderCategoryChart(periodUpdates);
-    renderTeamChart(periodUpdates);
-    renderActionStatusChart();
-    renderTopPeople(periodUpdates);
-    renderProductivityInsights(periodUpdates, periodActions, days);
-    renderTagsCloud();
+function parseLocalDate(value) {
+    if (!value) return null;
+    const text = String(value);
+    if (text.includes('T')) return new Date(text);
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return new Date(text);
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
-function renderActivityChart(updates, days) {
-    const container = document.getElementById('activityChart');
-    
-    // Group by date
-    const dateMap = {};
-    const today = new Date();
-    
-    for (let i = days - 1; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
-        dateMap[dateStr] = 0;
+function startOfDay(date) {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+}
+
+function endOfDay(date) {
+    const copy = new Date(date);
+    copy.setHours(23, 59, 59, 999);
+    return copy;
+}
+
+function getAnalyticsPeriod(key) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const quarter = Math.floor(month / 3);
+    const half = month < 6 ? 0 : 1;
+
+    if (['7', '14', '30', '90'].includes(key)) {
+        const days = Number(key);
+        const start = startOfDay(now);
+        start.setDate(start.getDate() - (days - 1));
+        return {
+            start,
+            end: endOfDay(now),
+            label: `Last ${days} days`,
+            bucket: days <= 31 ? 'day' : 'week'
+        };
     }
-    
-    updates.forEach(u => {
-        if (dateMap.hasOwnProperty(u.date)) {
-            dateMap[u.date]++;
+
+    if (key === 'thisQuarter' || key === 'lastQuarter') {
+        let periodYear = year;
+        let periodQuarter = key === 'thisQuarter' ? quarter : quarter - 1;
+        if (periodQuarter < 0) {
+            periodQuarter = 3;
+            periodYear -= 1;
         }
+        return {
+            start: new Date(periodYear, periodQuarter * 3, 1),
+            end: endOfDay(new Date(periodYear, periodQuarter * 3 + 3, 0)),
+            label: `Q${periodQuarter + 1} ${periodYear}`,
+            bucket: 'week'
+        };
+    }
+
+    if (key === 'thisHalf' || key === 'lastHalf') {
+        let periodYear = year;
+        let periodHalf = key === 'thisHalf' ? half : half - 1;
+        if (periodHalf < 0) {
+            periodHalf = 1;
+            periodYear -= 1;
+        }
+        return {
+            start: new Date(periodYear, periodHalf * 6, 1),
+            end: endOfDay(new Date(periodYear, periodHalf * 6 + 6, 0)),
+            label: `${periodHalf === 0 ? 'H1' : 'H2'} ${periodYear}`,
+            bucket: 'month'
+        };
+    }
+
+    const periodYear = key === 'lastYear' ? year - 1 : year;
+    return {
+        start: new Date(periodYear, 0, 1),
+        end: endOfDay(new Date(periodYear, 11, 31)),
+        label: `Year ${periodYear}`,
+        bucket: 'month'
+    };
+}
+
+function dateInPeriod(value, period) {
+    if (!value) return false;
+    const date = parseLocalDate(value);
+    return date && !Number.isNaN(date.getTime()) && date >= period.start && date <= period.end;
+}
+
+function bucketKey(date, bucket) {
+    if (bucket === 'month') {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    if (bucket === 'week') {
+        const weekday = day.getDay() || 7;
+        day.setDate(day.getDate() - weekday + 1);
+    }
+    return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+}
+
+function bucketLabel(key, bucket) {
+    if (bucket === 'month') {
+        const [year, month] = key.split('-').map(Number);
+        return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    }
+    return parseLocalDate(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function updateAnalytics() {
+    const period = getAnalyticsPeriod(document.getElementById('analyticsRange').value);
+    const label = document.getElementById('analyticsPeriodLabel');
+    if (label) {
+        const start = period.start.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+        const end = period.end.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+        label.textContent = `${period.label}: ${start} – ${end}`;
+    }
+
+    const periodUpdates = appData.updates.filter(update => dateInPeriod(update.date, period));
+    const periodActions = appData.actions.filter(action =>
+        dateInPeriod(action.createdAt, period) ||
+        dateInPeriod(action.completedAt, period) ||
+        dateInPeriod(action.dueDate, period)
+    );
+
+    renderActivityChart(periodUpdates, period);
+    renderCategoryChart(periodUpdates);
+    renderTeamChart(periodUpdates);
+    renderActionStatusChart(periodActions);
+    renderTopPeople(periodUpdates);
+    renderProductivityInsights(periodUpdates, periodActions, period);
+    renderTagsCloud(periodUpdates);
+}
+
+function renderActivityChart(updates, period) {
+    const container = document.getElementById('activityChart');
+    const counts = {};
+    const keys = [];
+    const cursor = new Date(period.start);
+
+    while (cursor <= period.end) {
+        const key = bucketKey(cursor, period.bucket);
+        if (!counts.hasOwnProperty(key)) {
+            counts[key] = 0;
+            keys.push(key);
+        }
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    updates.forEach(update => {
+        const key = bucketKey(parseLocalDate(update.date), period.bucket);
+        if (counts.hasOwnProperty(key)) counts[key] += 1;
     });
-    
-    const maxValue = Math.max(...Object.values(dateMap), 1);
-    const dates = Object.keys(dateMap);
-    
-    // Show fewer bars for longer periods
-    const step = days > 30 ? Math.ceil(days / 15) : 1;
-    const displayDates = dates.filter((_, i) => i % step === 0);
-    
-    container.innerHTML = displayDates.map(date => {
-        const value = dateMap[date];
-        const height = (value / maxValue) * 180;
-        const d = new Date(date);
-        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        
-        return `
-            <div class="chart-bar">
-                <div class="chart-bar-fill" style="height: ${height}px;" data-value="${value}"></div>
-                <div class="chart-bar-label">${label}</div>
-            </div>
-        `;
-    }).join('');
+
+    const groupSize = Math.max(1, Math.ceil(keys.length / 16));
+    const groups = [];
+    for (let index = 0; index < keys.length; index += groupSize) {
+        const slice = keys.slice(index, index + groupSize);
+        groups.push({
+            label: bucketLabel(slice[0], period.bucket),
+            value: slice.reduce((sum, key) => sum + counts[key], 0)
+        });
+    }
+
+    const maxValue = Math.max(...groups.map(group => group.value), 1);
+    container.innerHTML = groups.map(group => `
+        <div class="chart-bar">
+            <div class="chart-bar-fill" style="height: ${(group.value / maxValue) * 180}px;" data-value="${group.value}"></div>
+            <div class="chart-bar-label">${group.label}</div>
+        </div>
+    `).join('');
 }
 
 function renderCategoryChart(updates) {
@@ -1658,7 +1918,7 @@ function renderTeamChart(updates) {
     `;
 }
 
-function renderActionStatusChart() {
+function renderActionStatusChart(actions = appData.actions) {
     const container = document.getElementById('actionStatusChart');
     
     const statusCount = {
@@ -1668,7 +1928,7 @@ function renderActionStatusChart() {
         blocked: 0
     };
     
-    appData.actions.forEach(a => {
+    actions.forEach(a => {
         statusCount[a.status] = (statusCount[a.status] || 0) + 1;
     });
     
@@ -1738,9 +1998,9 @@ function renderTopPeople(updates) {
     `).join('');
 }
 
-function renderProductivityInsights(updates, actions, days) {
+function renderProductivityInsights(updates, actions, period) {
     const container = document.getElementById('productivityInsights');
-    
+    const days = Math.max(1, Math.round((period.end - period.start) / 86400000));
     const avgUpdatesPerDay = (updates.length / days).toFixed(1);
     const completedActions = actions.filter(a => a.status === 'completed').length;
     const completionRate = actions.length > 0 ? Math.round((completedActions / actions.length) * 100) : 0;
@@ -1750,7 +2010,7 @@ function renderProductivityInsights(updates, actions, days) {
     // Calculate busiest day
     const dayCount = {};
     updates.forEach(u => {
-        const day = new Date(u.date).toLocaleDateString('en-US', { weekday: 'long' });
+        const day = parseLocalDate(u.date).toLocaleDateString('en-US', { weekday: 'long' });
         dayCount[day] = (dayCount[day] || 0) + 1;
     });
     const busiestDay = Object.entries(dayCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
@@ -1793,17 +2053,17 @@ function renderProductivityInsights(updates, actions, days) {
         </div>
         <div class="insight-card">
             <div class="insight-icon">👥</div>
-            <div class="insight-value">${appData.teams.length}</div>
-            <div class="insight-label">Teams Managed</div>
+            <div class="insight-value">${new Set(updates.map(update => update.teamId).filter(Boolean)).size}</div>
+            <div class="insight-label">Teams Active</div>
         </div>
     `;
 }
 
-function renderTagsCloud() {
+function renderTagsCloud(updates = appData.updates) {
     const container = document.getElementById('tagsCloud');
     
     const tagCount = {};
-    appData.updates.forEach(u => {
+    updates.forEach(u => {
         if (u.tags) {
             u.tags.forEach(tag => {
                 tagCount[tag] = (tagCount[tag] || 0) + 1;

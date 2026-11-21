@@ -28,7 +28,7 @@ A modern, beautiful web-based dashboard for tech leads to track daily activities
 | **Daily Updates** | Log meetings, discussions, PR reviews, audits with categories |
 | **Action Items** | Kanban board with priorities, owners, due dates, JIRA links |
 | **Teams** | Manage multiple teams (Techbacklog, Deposits, MFA, etc.) |
-| **Analytics** | Charts showing activity trends, team stats, productivity insights |
+| **Analytics** | Charts for 7–90 days, this/last quarter, half year, and year |
 | **Weekly Reports** | Auto-generated reports with export to PDF or copy for email |
 | **Global Search** | Search across all updates, actions, and teams instantly |
 | **Tags** | Add custom tags to updates for better organization |
@@ -293,6 +293,67 @@ Click the **🌙** icon in the top-right of the sidebar header to toggle dark mo
 | `Escape` | Close modal / Clear search |
 
 ---
+
+## Upload notes from a text file
+
+Use **Upload Notes** in the sidebar when you already wrote the day in a text file. This **adds** records. It does not change or delete anything already in the app.
+
+1. Click **Notes Template** and save `daily-tracker-notes-template.txt`.
+2. Fill in teams, daily updates, and action items. Separate each record with a line that contains only `---`.
+3. Click **Upload Notes** and choose that `.txt` file.
+4. Review the counts, then confirm. A second upload of the same file skips rows that are already saved.
+
+Dates can be `2026-11-17`, `17 Nov 2026`, or `17/11/2026`.
+
+```
+=== TEAMS ===
+NAME: Performance Pod
+DESCRIPTION: App performance and reliability
+MEMBERS: Murthy, Rajesh
+COLOR: #EF4444
+---
+
+=== UPDATES ===
+DATE: 17 Nov 2026
+CATEGORY: discussion
+TEAM: Performance Pod
+PEOPLE: Murthy, Rajesh
+TAGS: golang, monitoring
+TEXT: Discussed the golang monitoring gap with the perf SRE team.
+---
+
+=== ACTIONS ===
+TITLE: SonarQube Setup Jenkins
+OWNER: Pratap, Adhika, Chandan
+PRIORITY: high
+STATUS: pending
+TEAM: Drishti AI
+DUE: 25 Nov 2026
+JIRA: RITM8019234
+NOTES: Ask them to test and share the result.
+---
+```
+
+| If this already exists | What upload does |
+| --- | --- |
+| Same date and update text | Skips it |
+| Same action title and owner | Skips it |
+| Same team name | Keeps the team. Adds only member names that are not already listed |
+
+**Restore Backup** is different: that JSON file replaces the whole tracker. Use it only to restore a backup.
+
+## Analytics periods
+
+Open **Analytics** and choose the range:
+
+| Range | Use it for |
+| --- | --- |
+| Last 7, 14, 30, or 90 days | Recent delivery work |
+| This quarter / Last quarter | Quarterly review |
+| This half year / Last half year | Mid-year review |
+| This year / Last year | Annual appraisal |
+
+The label next to the menu shows the exact start and end dates. Charts, teams, people, tags, and action status all use that same period.
 
 ## Data Storage & Backup
 

@@ -344,6 +344,26 @@ html {
     background: var(--bg-tertiary);
 }
 
+.import-result {
+    padding: 24px 28px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 0.9rem;
+}
+
+.import-result h4 {
+    margin-top: 8px;
+}
+
+.import-result ul {
+    margin-left: 18px;
+}
+
+.import-result li {
+    margin: 4px 0;
+}
+
 .last-saved {
     font-size: 0.75rem;
     color: var(--text-muted);

@@ -1,0 +1,60 @@
+# Tech Lead Daily Tracker notes
+# Lines starting with # are comments.
+# Use one of these section headings: === TEAMS ===, === UPDATES ===, === ACTIONS ===
+# Separate each record with a line that contains only ---
+# Uploading this file ADDS data. It never changes or deletes what is already saved.
+# An update already saved for the same date and text is skipped.
+# An action with the same title and owner is skipped.
+# An existing team keeps its name, description, and color. New member names are added.
+
+=== TEAMS ===
+NAME: Performance Pod
+DESCRIPTION: App performance and reliability
+MEMBERS: Murthy, Rajesh
+COLOR: #EF4444
+---
+
+=== UPDATES ===
+DATE: 17 Nov 2026
+CATEGORY: discussion
+TEAM: Performance Pod
+PEOPLE: Murthy, Rajesh
+TAGS: golang, monitoring
+TEXT: DT is not able to monitor golang services due to entry point change, so I discussed it with the perf SRE team.
+---
+DATE: 2026-11-18
+CATEGORY: review
+TEAM: Drishti AI
+PEOPLE: Chandan
+TAGS: pr
+TEXT: Reviewed 4-5 pull requests for AI Banking.
+---
+DATE: 19/11/2026
+CATEGORY: audit
+TEAM: 
+PEOPLE: Saman
+TAGS: checkmarx, r12
+TEXT: Checkmarx discussion with Saman and team for fixing the R12 Go and Java vulnerability.
+---
+
+=== ACTIONS ===
+TITLE: SonarQube Setup Jenkins
+OWNER: Pratap, Adhika, Chandan
+PRIORITY: high
+STATUS: pending
+TEAM: Drishti AI
+DUE: 25 Nov 2026
+JIRA: RITM8019234
+RECURRING:
+NOTES: Pratap, Adhika, and Chandan to test this and share the result.
+---
+TITLE: Priority for tech backlog
+OWNER: Shyam
+PRIORITY: high
+STATUS: in progress
+TEAM: Techbacklog
+DUE: 2026-11-21
+JIRA:
+RECURRING: weekly
+NOTES: Discuss priority for the tech backlog with Shyam.
+---
