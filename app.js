@@ -318,7 +318,7 @@ function renderSearchResults(results, query) {
             </div>
         `)}
         ${renderSearchSection('👥 Teams', results.teams, 'team', query, (row) => `
-            <div class="search-item" onclick="showView('teams'); setTimeout(() => openEditTeamModal('${row.id}'), 50)">
+            <div class="search-item" onclick="openTeamUpdates('${row.id}')">
                 <strong>${highlightText(row.team.name, query)}</strong>
                 <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
                     ${escapeHtml(row.team.members || row.team.description || 'No members listed')}
@@ -669,6 +669,7 @@ function saveUpdate(event) {
     filterUpdates();
     updateDashboard();
     populateTagSuggestions();
+    refreshTeamUpdatesList();
     closeModal('addUpdateModal');
 }
 
@@ -786,6 +787,7 @@ function deleteUpdate(id) {
         saveData();
         filterUpdates();
         updateDashboard();
+        refreshTeamUpdatesList();
     }
 }
 
@@ -845,6 +847,7 @@ function updateUpdate(event) {
     filterUpdates();
     updateDashboard();
     populateTagSuggestions();
+    refreshTeamUpdatesList();
     closeModal('editUpdateModal');
 }
 
@@ -855,6 +858,7 @@ function deleteUpdateFromModal() {
         saveData();
         filterUpdates();
         updateDashboard();
+        refreshTeamUpdatesList();
         closeModal('editUpdateModal');
     }
 }
@@ -1256,7 +1260,7 @@ function renderTeams() {
         const pendingActions = teamActions.filter(a => a.status !== 'completed').length;
         
         return `
-            <div class="team-card">
+            <div class="team-card" onclick="openTeamUpdates('${team.id}')">
                 <div class="team-header" style="background: ${safeColor(team.color)}">
                     <h3>${escapeHtml(team.name)}</h3>
                     <p>${escapeHtml(team.description || 'No description')}</p>
@@ -1279,8 +1283,8 @@ function renderTeams() {
                     ${team.jira ? `<span class="action-jira">${escapeHtml(team.jira)}</span>` : ''}
                     ${team.status ? `<span class="pill ${reportPillClass(team.status)}">${escapeHtml(reportStatusLabel(team.status))}</span>` : ''}
                     <div class="team-actions">
-                        <button class="btn btn-small btn-primary" onclick="openEditTeamModal('${team.id}')">✏️ Edit</button>
-                        <button class="btn btn-small btn-secondary" onclick="deleteTeam('${team.id}')">🗑️ Delete</button>
+                        <button class="btn btn-small btn-primary" onclick="event.stopPropagation(); openEditTeamModal('${team.id}')">✏️ Edit</button>
+                        <button class="btn btn-small btn-secondary" onclick="event.stopPropagation(); deleteTeam('${team.id}')">🗑️ Delete</button>
                     </div>
                 </div>
             </div>
@@ -1334,6 +1338,58 @@ function updateTeam(event) {
     populateTeamDropdowns();
     updateDashboard();
     closeModal('editTeamModal');
+}
+
+let openTeamUpdatesId = null;
+
+function openTeamUpdates(teamId) {
+    openTeamUpdatesId = teamId;
+    renderTeamUpdatesList();
+    openModal('teamUpdatesModal');
+}
+
+function refreshTeamUpdatesList() {
+    if (!openTeamUpdatesId) return;
+    if (!document.getElementById('teamUpdatesModal')?.classList.contains('active')) return;
+    renderTeamUpdatesList();
+}
+
+function renderTeamUpdatesList() {
+    const title = document.getElementById('teamUpdatesTitle');
+    const note = document.getElementById('teamUpdatesNote');
+    const list = document.getElementById('teamUpdatesList');
+    if (!title || !note || !list) return;
+    const team = appData.teams.find(item => item.id === openTeamUpdatesId);
+    if (!team) {
+        title.textContent = 'Team updates';
+        note.textContent = 'This team is no longer available.';
+        list.innerHTML = '';
+        return;
+    }
+    const updates = appData.updates
+        .filter(update => update.teamId === team.id)
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    title.textContent = team.name;
+    note.textContent = updates.length
+        ? `${countWord(updates.length, 'update', 'updates')}. Select one to edit it.`
+        : 'No updates for this team yet.';
+    list.innerHTML = updates.map(update => {
+        const meta = [
+            formatDate(update.date, 'short'),
+            reportCategoryLabel(update.category),
+            update.people,
+            update.targetDate ? `Target ${formatDate(update.targetDate, 'short')}` : '',
+            update.jira,
+            statusPhrase(update.status)
+        ].filter(Boolean).join(' · ');
+        return `<button type="button" class="team-update-row" onclick="openEditUpdateModal('${update.id}')">
+            <span class="team-update-main">
+                <p>${escapeHtml(update.description || 'Untitled note')}</p>
+                <div class="fine">${escapeHtml(meta)}</div>
+            </span>
+            <span class="btn btn-small btn-primary">Edit</span>
+        </button>`;
+    }).join('');
 }
 
 function deleteTeamFromModal() {
@@ -1458,7 +1514,7 @@ function renderTeamSummary() {
         const actions = appData.actions.filter(a => a.teamId === team.id && a.status !== 'completed').length;
         
         return `
-            <div class="team-summary-item" style="cursor: pointer" onclick="showView('teams'); setTimeout(() => openEditTeamModal('${team.id}'), 100)">
+            <div class="team-summary-item" style="cursor: pointer" onclick="openTeamUpdates('${team.id}')">
                 <div class="team-summary-name">
                     <span class="team-color-dot" style="background: ${safeColor(team.color)}"></span>
                     <strong>${escapeHtml(team.name)}</strong>
@@ -1888,8 +1944,9 @@ function teamCardHtml(pack, model, color, title, subtitle) {
         countWord(pack.done.length, 'finished', 'finished')
     ];
     if (blockers) counts.push(countWord(blockers, 'blocker', 'blockers'));
+    const teamId = pack.team && pack.team.id ? pack.team.id : '';
     return `<article class="team-brief">
-        <header class="team-brief-head" style="border-left-color:${safeColor(color)};background:${colorWithAlpha(color, '18')}">
+        <header class="team-brief-head" ${teamId ? `onclick="openTeamUpdates('${teamId}')"` : ''} style="border-left-color:${safeColor(color)};background:${colorWithAlpha(color, '18')}${teamId ? ';cursor:pointer' : ''}">
             <div>
                 <h3>${escapeHtml(title)}</h3>
                 <p>${escapeHtml(subtitle)}</p>

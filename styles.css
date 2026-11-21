@@ -1881,6 +1881,68 @@ html {
     animation: fadeIn 0.2s ease;
 }
 
+#editUpdateModal.active,
+#editActionModal.active,
+#editTeamModal.active,
+#addUpdateModal.active,
+#addActionModal.active,
+#addTeamModal.active,
+#deleteDataModal.active {
+    z-index: 1100;
+}
+
+.modal-content.wide {
+    max-width: 760px;
+}
+
+.team-updates-note {
+    padding: 16px 28px 0;
+    color: var(--text-secondary);
+}
+
+.team-update-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 28px 28px;
+    max-height: 62vh;
+    overflow-y: auto;
+}
+
+.team-update-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.team-update-row:hover {
+    border-color: var(--primary);
+}
+
+.team-update-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.team-update-main p {
+    color: var(--text-primary);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.team-card {
+    cursor: pointer;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }

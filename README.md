@@ -410,7 +410,7 @@ The app comes with your teams pre-configured:
 | Drishti AI | AI and ML initiatives |
 | CQRS | Command Query Responsibility Segregation |
 
-You can add, edit, or delete teams as needed.
+You can add, edit, or delete teams as needed. Click a team to see its updates and edit any of them.
 
 ### Categories for Updates
 
