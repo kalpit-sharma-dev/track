@@ -12,9 +12,6 @@ let appData = {
     }
 };
 
-// Auto-save file path (for reference)
-const DATA_FILE_NAME = 'tech-lead-tracker-data.json';
-
 let dataFileAvailable = false;
 let fileSaveOk = false;
 let fileSavePending = false;
@@ -1831,11 +1828,6 @@ document.addEventListener('visibilitychange', () => {
             saveData();
         }
     }
-});
-
-// Save before page unload
-window.addEventListener('beforeunload', () => {
-    saveData();
 });
 
 // Keyboard shortcuts
