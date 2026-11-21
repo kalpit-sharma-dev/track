@@ -1754,6 +1754,11 @@ form {
     animation: fadeInScale 0.4s ease;
 }
 
+.update-item.no-animate,
+.action-card.no-animate {
+    animation: none;
+}
+
 /* Staggered animation */
 .update-item:nth-child(1) { animation-delay: 0.05s; }
 .update-item:nth-child(2) { animation-delay: 0.1s; }

@@ -99,139 +99,192 @@ function applyTheme() {
 
 // ==================== GLOBAL SEARCH ====================
 
-function globalSearch(event) {
-    const query = event.target.value.trim().toLowerCase();
-    
+let searchIndex = null;
+let searchTimer = null;
+let searchReturnView = 'dashboard';
+let lastSearchQuery = '';
+const searchLimits = { update: 40, action: 40, team: 20 };
+
+function scheduleSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 120);
+}
+
+function searchText(parts) {
+    return parts.filter(part => part !== undefined && part !== null && String(part).trim() !== '')
+        .join(' ')
+        .toLowerCase();
+}
+
+function buildSearchIndex() {
+    const teams = new Map(appData.teams.map(team => [team.id, team]));
+    const rows = [];
+
+    appData.updates.forEach(update => {
+        const team = teams.get(update.teamId);
+        const dateText = update.date ? `${formatDate(update.date)} ${formatDate(update.date, 'short')}` : '';
+        rows.push({
+            type: 'update',
+            id: update.id,
+            haystack: searchText([
+                update.description, update.people, update.category,
+                ...(update.tags || []), update.date, dateText, team?.name
+            ]),
+            update,
+            teamName: team?.name || ''
+        });
+    });
+
+    appData.actions.forEach(action => {
+        const team = teams.get(action.teamId);
+        const dueText = action.dueDate ? `${formatDate(action.dueDate)} ${formatDate(action.dueDate, 'short')}` : '';
+        rows.push({
+            type: 'action',
+            id: action.id,
+            haystack: searchText([
+                action.title, action.description, action.notes, action.owner,
+                action.jira, action.status, action.priority, action.recurring,
+                action.dueDate, dueText, team?.name
+            ]),
+            action,
+            teamName: team?.name || ''
+        });
+    });
+
+    appData.teams.forEach(team => {
+        rows.push({
+            type: 'team',
+            id: team.id,
+            haystack: searchText([team.name, team.description, team.members]),
+            team
+        });
+    });
+
+    searchIndex = rows;
+    return rows;
+}
+
+function runSearch() {
+    const input = document.getElementById('globalSearch');
+    const query = input ? input.value.trim().toLowerCase() : '';
+    const searchView = document.getElementById('search-view');
+
     if (query.length < 2) {
-        // If less than 2 characters, go back to previous view
-        const activeNav = document.querySelector('.nav-item.active');
-        if (activeNav) {
-            showView(activeNav.dataset.view);
+        if (searchView && searchView.classList.contains('active')) {
+            showView(searchReturnView || 'dashboard');
         }
         return;
     }
-    
-    // Show search results view
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById('search-view').classList.add('active');
-    
-    // Remove active state from nav items when in search
+
+    if (query !== lastSearchQuery) {
+        searchLimits.update = 40;
+        searchLimits.action = 40;
+        searchLimits.team = 20;
+        lastSearchQuery = query;
+    }
+
+    if (searchView && !searchView.classList.contains('active')) {
+        const active = document.querySelector('.nav-item.active');
+        if (active) searchReturnView = active.dataset.view;
+    }
+
+    document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+    searchView.classList.add('active');
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    
-    const results = {
-        updates: [],
-        actions: [],
-        teams: []
-    };
-    
-    // Search updates
-    appData.updates.forEach(update => {
-        if (update.description.toLowerCase().includes(query) ||
-            update.people?.toLowerCase().includes(query) ||
-            update.category.toLowerCase().includes(query) ||
-            update.tags?.some(t => t.toLowerCase().includes(query))) {
-            results.updates.push(update);
-        }
-    });
-    
-    // Search actions
-    appData.actions.forEach(action => {
-        if (action.title.toLowerCase().includes(query) ||
-            action.description?.toLowerCase().includes(query) ||
-            action.owner.toLowerCase().includes(query) ||
-            action.jira?.toLowerCase().includes(query)) {
-            results.actions.push(action);
-        }
-    });
-    
-    // Search teams
-    appData.teams.forEach(team => {
-        if (team.name.toLowerCase().includes(query) ||
-            team.description?.toLowerCase().includes(query) ||
-            team.members?.toLowerCase().includes(query)) {
-            results.teams.push(team);
-        }
-    });
-    
-    renderSearchResults(results, query);
+
+    const terms = query.split(/\s+/).filter(Boolean);
+    const matches = (searchIndex || buildSearchIndex()).filter(row => terms.every(term => row.haystack.includes(term)));
+    renderSearchResults({
+        updates: matches.filter(row => row.type === 'update'),
+        actions: matches.filter(row => row.type === 'action'),
+        teams: matches.filter(row => row.type === 'team')
+    }, query);
+}
+
+function renderSearchSection(title, rows, type, query, renderItem) {
+    if (!rows.length) return '';
+    const visible = rows.slice(0, searchLimits[type]);
+    const remaining = rows.length - visible.length;
+    return `
+        <div class="search-section">
+            <h4>${title} (${rows.length})</h4>
+            ${visible.map(row => renderItem(row, query)).join('')}
+            ${remaining > 0 ? `<button class="btn btn-secondary" onclick="showMoreSearch('${type}')">Show ${Math.min(40, remaining)} more</button>` : ''}
+        </div>
+    `;
 }
 
 function renderSearchResults(results, query) {
     const container = document.getElementById('searchResults');
     const totalResults = results.updates.length + results.actions.length + results.teams.length;
-    
+
     if (totalResults === 0) {
-        container.innerHTML = `<p class="empty-state">No results found for "${query}"</p>`;
+        container.innerHTML = `<p class="empty-state">No results found for "${escapeHtml(query)}"</p>`;
         return;
     }
-    
-    let html = `<p style="margin-bottom: 20px; color: var(--text-secondary);">Found ${totalResults} result${totalResults !== 1 ? 's' : ''} for "<strong>${query}</strong>"</p>`;
-    
-    if (results.updates.length > 0) {
-        html += `
-            <div class="search-section">
-                <h4>📝 Updates (${results.updates.length})</h4>
-                ${results.updates.slice(0, 10).map(update => `
-                    <div class="search-item" onclick="showView('daily')">
-                        <strong>${highlightText(update.description, query)}</strong>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-                            ${formatDate(update.date, 'short')} • ${update.category}
-                        </div>
-                    </div>
-                `).join('')}
+
+    container.innerHTML = `
+        <p style="margin-bottom: 20px; color: var(--text-secondary);">Found ${totalResults} result${totalResults === 1 ? '' : 's'} for "<strong>${escapeHtml(query)}</strong>". Every update, action, person, team, tag, and ticket is included.</p>
+        ${renderSearchSection('📝 Updates', results.updates, 'update', query, (row) => `
+            <div class="search-item" onclick="openUpdateFromSearch('${row.id}')">
+                <strong>${highlightText(row.update.description, query)}</strong>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                    ${formatDate(row.update.date, 'short')} • ${escapeHtml(row.update.category)}
+                    ${row.teamName ? ` • ${escapeHtml(row.teamName)}` : ''}
+                    ${row.update.people ? ` • ${escapeHtml(row.update.people)}` : ''}
+                </div>
             </div>
-        `;
-    }
-    
-    if (results.actions.length > 0) {
-        html += `
-            <div class="search-section">
-                <h4>✅ Action Items (${results.actions.length})</h4>
-                ${results.actions.slice(0, 10).map(action => `
-                    <div class="search-item" onclick="showView('actions'); openEditActionModal('${action.id}')">
-                        <strong>${highlightText(action.title, query)}</strong>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-                            Owner: ${action.owner} • Status: ${action.status}
-                        </div>
-                    </div>
-                `).join('')}
+        `)}
+        ${renderSearchSection('✅ Action Items', results.actions, 'action', query, (row) => `
+            <div class="search-item" onclick="showView('actions'); openEditActionModal('${row.id}')">
+                <strong>${highlightText(row.action.title, query)}</strong>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                    Owner: ${escapeHtml(row.action.owner)} • ${escapeHtml(row.action.status)} • ${escapeHtml(row.action.priority)}
+                    ${row.action.jira ? ` • ${escapeHtml(row.action.jira)}` : ''}
+                    ${row.teamName ? ` • ${escapeHtml(row.teamName)}` : ''}
+                </div>
             </div>
-        `;
-    }
-    
-    if (results.teams.length > 0) {
-        html += `
-            <div class="search-section">
-                <h4>👥 Teams (${results.teams.length})</h4>
-                ${results.teams.map(team => `
-                    <div class="search-item" onclick="showView('teams')">
-                        <strong>${highlightText(team.name, query)}</strong>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-                            ${team.description || 'No description'}
-                        </div>
-                    </div>
-                `).join('')}
+        `)}
+        ${renderSearchSection('👥 Teams', results.teams, 'team', query, (row) => `
+            <div class="search-item" onclick="showView('teams'); setTimeout(() => openEditTeamModal('${row.id}'), 50)">
+                <strong>${highlightText(row.team.name, query)}</strong>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                    ${escapeHtml(row.team.members || row.team.description || 'No members listed')}
+                </div>
             </div>
-        `;
-    }
-    
-    container.innerHTML = html;
+        `)}
+    `;
+}
+
+function showMoreSearch(type) {
+    searchLimits[type] += 40;
+    runSearch();
+}
+
+function openUpdateFromSearch(id) {
+    showView('daily');
+    setTimeout(() => openEditUpdateModal(id), 50);
 }
 
 function highlightText(text, query) {
-    if (!text) return '';
-    const regex = new RegExp(`(${query})`, 'gi');
-    return text.replace(regex, '<span class="search-highlight">$1</span>');
+    const safe = escapeHtml(text || '');
+    const terms = String(query || '').split(/\s+/).filter(Boolean).map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (!terms.length) return safe;
+    return safe.replace(new RegExp(`(${terms.join('|')})`, 'gi'), '<span class="search-highlight">$1</span>');
 }
 
 function closeSearch() {
-    document.getElementById('globalSearch').value = '';
-    showView('dashboard');
+    const input = document.getElementById('globalSearch');
+    if (input) input.value = '';
+    lastSearchQuery = '';
+    showView(searchReturnView || 'dashboard');
 }
 
 function searchByTag(tag) {
-    document.getElementById('globalSearch').value = tag;
-    globalSearch({ target: { value: tag } });
+    const input = document.getElementById('globalSearch');
+    input.value = tag;
+    lastSearchQuery = '';
+    runSearch();
 }
 
 // ==================== TAGS ====================
@@ -262,6 +315,7 @@ function addTagToInput(tag) {
 
 // Save data to localStorage and update indicator
 function saveData() {
+    searchIndex = null;
     appData.lastSaved = new Date().toISOString();
     localStorage.setItem('techLeadTracker', JSON.stringify(appData));
     updateLastSavedIndicator();
@@ -391,9 +445,15 @@ function showView(viewName) {
 }
 
 // Set default dates
+function localDateString(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function setDefaultDates() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('updateDate').value = today;
+    document.getElementById('updateDate').value = localDateString();
     document.getElementById('filterDate').value = '';
 }
 
@@ -416,7 +476,12 @@ function getWeekNumber(date) {
 
 // Format date
 function formatDate(date, format = 'long') {
-    const d = new Date(date);
+    if (!date) return '';
+    const text = String(date);
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(text)
+        ? new Date(Number(text.slice(0, 4)), Number(text.slice(5, 7)) - 1, Number(text.slice(8, 10)))
+        : new Date(date);
+    if (Number.isNaN(d.getTime())) return text;
     if (format === 'short') {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
@@ -454,7 +519,7 @@ function populateTeamDropdowns() {
 
 function openAddUpdateModal() {
     document.getElementById('addUpdateForm').reset();
-    document.getElementById('updateDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('updateDate').value = localDateString();
     openModal('addUpdateModal');
 }
 
@@ -490,17 +555,33 @@ function saveUpdate(event) {
     closeModal('addUpdateModal');
 }
 
+let updateRenderLimit = 60;
+let updateRenderSource = null;
+let actionRenderLimit = 40;
+let actionRenderSource = null;
+
 function renderUpdates(filteredUpdates = null) {
-    const updates = filteredUpdates || appData.updates;
+    const source = filteredUpdates === null ? appData.updates : filteredUpdates;
+    if (source !== updateRenderSource) {
+        updateRenderSource = source;
+        updateRenderLimit = 60;
+    }
+    const updates = source.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, updateRenderLimit);
+    const remaining = source.length - updates.length;
     const container = document.getElementById('dailyUpdatesList');
+    const teamMap = new Map(appData.teams.map(team => [team.id, team]));
     
-    if (updates.length === 0) {
+    if (source.length === 0) {
         container.innerHTML = '<p class="empty-state">No daily updates yet. Click "Add Update" to get started!</p>';
         return;
     }
     
     // Group by date
     const grouped = {};
+    const dateTotals = {};
+    source.forEach(update => {
+        dateTotals[update.date] = (dateTotals[update.date] || 0) + 1;
+    });
     updates.forEach(update => {
         if (!grouped[update.date]) grouped[update.date] = [];
         grouped[update.date].push(update);
@@ -510,8 +591,11 @@ function renderUpdates(filteredUpdates = null) {
     const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
     
     sortedDates.forEach((date, dateIndex) => {
-        const isToday = date === new Date().toISOString().split('T')[0];
-        const isYesterday = date === new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const today = localDateString();
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const isToday = date === today;
+        const isYesterday = date === localDateString(yesterdayDate);
         
         let dateLabel = formatDate(date);
         if (isToday) dateLabel = '📍 Today - ' + dateLabel;
@@ -521,11 +605,11 @@ function renderUpdates(filteredUpdates = null) {
         html += `<div class="date-group" style="margin-bottom: 28px;">
             <h3 style="margin-bottom: 16px; ${isToday ? 'color: var(--primary); font-weight: 700;' : ''}">
                 ${dateLabel}
-                <span style="font-weight: 400; opacity: 0.6; margin-left: 8px; font-size: 0.8rem;">(${grouped[date].length} update${grouped[date].length !== 1 ? 's' : ''})</span>
+                <span style="font-weight: 400; opacity: 0.6; margin-left: 8px; font-size: 0.8rem;">(${dateTotals[date]} update${dateTotals[date] !== 1 ? 's' : ''})</span>
             </h3>`;
         
         grouped[date].forEach((update, index) => {
-            const team = appData.teams.find(t => t.id === update.teamId);
+            const team = teamMap.get(update.teamId);
             const categoryIcons = {
                 meeting: '🤝',
                 discussion: '💬',
@@ -538,11 +622,11 @@ function renderUpdates(filteredUpdates = null) {
             };
             
             const tagsHtml = update.tags && update.tags.length > 0 
-                ? `<div class="tags-container">${update.tags.map(tag => `<span class="tag" onclick="event.stopPropagation(); searchByTag('${tag}')">#${tag}</span>`).join('')}</div>` 
+                ? `<div class="tags-container">${update.tags.map(tag => `<span class="tag" onclick="event.stopPropagation(); searchByTag(decodeURIComponent('${encodeURIComponent(tag)}'))">#${escapeHtml(tag)}</span>`).join('')}</div>` 
                 : '';
             
             html += `
-                <div class="update-item" style="animation-delay: ${index * 0.05}s; border-left-color: ${team ? team.color : 'var(--primary)'}; cursor: pointer;" onclick="openEditUpdateModal('${update.id}')">
+                <div class="update-item${index > 8 ? ' no-animate' : ''}" style="border-left-color: ${team ? team.color : 'var(--primary)'}; cursor: pointer;" onclick="openEditUpdateModal('${update.id}')">
                     <div class="update-header">
                         <div class="update-meta">
                             <span class="update-category category-${update.category}">
@@ -559,8 +643,8 @@ function renderUpdates(filteredUpdates = null) {
                             </button>
                         </div>
                     </div>
-                    <p class="update-description">${update.description}</p>
-                    ${update.people ? `<p class="update-people"><strong>With:</strong> ${update.people}</p>` : ''}
+                    <p class="update-description">${escapeHtml(update.description)}</p>
+                    ${update.people ? `<p class="update-people"><strong>With:</strong> ${escapeHtml(update.people)}</p>` : ''}
                     ${tagsHtml}
                 </div>
             `;
@@ -568,6 +652,10 @@ function renderUpdates(filteredUpdates = null) {
         
         html += '</div>';
     });
+
+    if (remaining > 0) {
+        html += `<button class="btn btn-secondary" onclick="updateRenderLimit += 60; renderUpdates(updateRenderSource)">Show ${Math.min(60, remaining)} more updates (${remaining} remaining)</button>`;
+    }
     
     container.innerHTML = html;
 }
@@ -798,11 +886,12 @@ function calculateNextDueDate(recurring) {
             date.setMonth(date.getMonth() + 1);
             break;
     }
-    return date.toISOString().split('T')[0];
+    return localDateString(date);
 }
 
 function renderActions(filteredActions = null) {
-    const actions = filteredActions || appData.actions;
+    const actions = filteredActions === null ? appData.actions : filteredActions;
+    actionRenderSource = actions;
     
     const statuses = ['pending', 'in-progress', 'completed', 'blocked'];
     const statusToId = {
@@ -821,6 +910,10 @@ function renderActions(filteredActions = null) {
         
         const statusActions = actions.filter(a => a.status === status);
         countEl.textContent = statusActions.length;
+        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        statusActions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+        const visibleActions = statusActions.slice(0, actionRenderLimit);
+        const hiddenActions = statusActions.length - visibleActions.length;
         
         if (statusActions.length === 0) {
             container.innerHTML = `<p style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 30px 20px; opacity: 0.7;">
@@ -829,14 +922,14 @@ function renderActions(filteredActions = null) {
             return;
         }
         
-        // Sort by priority within each status
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        statusActions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-        
-        container.innerHTML = statusActions.map(action => {
-            const team = appData.teams.find(t => t.id === action.teamId);
-            const isOverdue = action.dueDate && new Date(action.dueDate) < new Date() && action.status !== 'completed';
-            const daysUntilDue = action.dueDate ? Math.ceil((new Date(action.dueDate) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+        const teamMap = new Map(appData.teams.map(team => [team.id, team]));
+        const todayStart = startOfDay(new Date());
+        container.innerHTML = visibleActions.map(action => {
+            const team = teamMap.get(action.teamId);
+            const due = action.dueDate ? parseLocalDate(action.dueDate) : null;
+            const dueStart = due ? startOfDay(due) : null;
+            const isOverdue = dueStart && dueStart < todayStart && action.status !== 'completed';
+            const daysUntilDue = dueStart ? Math.round((dueStart - todayStart) / 86400000) : null;
             
             let dueText = '';
             if (action.dueDate) {
@@ -854,15 +947,17 @@ function renderActions(filteredActions = null) {
             return `
                 <div class="action-card priority-${action.priority}" onclick="openEditActionModal('${action.id}')">
                     <span class="priority-badge ${action.priority}">${action.priority}</span>
-                    <div class="action-title">${action.title}</div>
-                    <div class="action-owner">👤 ${action.owner}</div>
+                    <div class="action-title">${escapeHtml(action.title)}</div>
+                    <div class="action-owner">👤 ${escapeHtml(action.owner)}</div>
                     ${team ? `<div style="font-size: 0.7rem; color: ${team.color}; margin-top: 6px; font-weight: 600;">● ${team.name}</div>` : ''}
                     ${action.dueDate ? `<div class="action-due ${isOverdue ? 'overdue' : ''}">${dueText}</div>` : ''}
                     ${action.jira ? `<span class="action-jira">${action.jira}</span>` : ''}
                     ${action.recurring ? `<span class="recurring-badge">${action.recurring}</span>` : ''}
                 </div>
             `;
-        }).join('');
+        }).join('') + (hiddenActions > 0
+            ? `<button class="btn btn-small btn-secondary" onclick="actionRenderLimit += 40; renderActions(actionRenderSource)">Show ${hiddenActions} more</button>`
+            : '');
     });
 }
 
@@ -966,7 +1061,7 @@ function filterActions() {
             filtered.sort((a, b) => {
                 if (!a.dueDate) return 1;
                 if (!b.dueDate) return -1;
-                return new Date(a.dueDate) - new Date(b.dueDate);
+                return parseLocalDate(a.dueDate) - parseLocalDate(b.dueDate);
             });
             break;
         case 'owner':
@@ -1117,7 +1212,7 @@ function deleteTeamFromModal() {
 // ==================== DASHBOARD ====================
 
 function updateDashboard() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateString();
     const weekStart = getWeekStart(new Date());
     
     // Today's updates

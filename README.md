@@ -30,7 +30,7 @@ A modern, beautiful web-based dashboard for tech leads to track daily activities
 | **Teams** | Manage multiple teams (Techbacklog, Deposits, MFA, etc.) |
 | **Analytics** | Charts for 7–90 days, this/last quarter, half year, and year |
 | **Weekly Reports** | Auto-generated reports with export to PDF or copy for email |
-| **Global Search** | Search across all updates, actions, and teams instantly |
+| **Search** | Find any update, person, team, tag, ticket, or action |
 | **Tags** | Add custom tags to updates for better organization |
 | **Recurring Tasks** | Set actions to repeat daily, weekly, or monthly |
 | **Dark Mode** | Toggle between light and dark themes |
@@ -283,6 +283,26 @@ You can also just double-click `index.html` - all features work! The local serve
 Click the **🌙** icon in the top-right of the sidebar header to toggle dark mode.
 
 ---
+
+## Search
+
+The search box at the top of the sidebar looks through **everything already saved**:
+
+| You can search for | Examples |
+| --- | --- |
+| Update text | `golang monitoring`, `Checkmarx` |
+| A person's name | `Rajesh`, `Shyam`, `Adhika` |
+| A team | `Performance Pod`, `Drishti` |
+| A tag | `urgent`, `vapt` |
+| A ticket | `RITM8019234` |
+| Status, priority, or category | `blocked`, `high`, `audit` |
+| A date | `Nov 17`, `2026` |
+
+More than one word means every word must match. `Rajesh golang` finds an update that mentions both. The search waits a moment while you type, then checks the whole tracker. It does not stop at the first few records. If there are many matches, the first set is shown and **Show more** loads the rest.
+
+Click a result to open that update, action item, or team. Press `Esc` or clear the box to go back.
+
+Long lists of daily updates and action items also load in pages, so a year of notes stays responsive. Search still checks every record.
 
 ## Keyboard Shortcuts
 
