@@ -26,6 +26,7 @@ assert.strictEqual(parsed.teams[0].description, 'App performance and reliability
 assert.strictEqual(parsed.teams[0].members, 'Murthy, Rajesh');
 assert.strictEqual(parsed.teams[0].color, '#EF4444');
 assert.strictEqual(parsed.teams[0].targetDate, '2026-11-30');
+assert.strictEqual(parsed.teams[0].jira, 'PERF-120');
 assert.strictEqual(parsed.updates.length, 7);
 assert.ok(parsed.updates.every(update => update.teamName === 'Performance Pod'));
 assert.deepStrictEqual(parsed.updates.map(update => update.category), [
@@ -33,7 +34,9 @@ assert.deepStrictEqual(parsed.updates.map(update => update.category), [
 ]);
 assert.deepStrictEqual(parsed.updates[0].tags, ['golang', 'monitoring']);
 assert.strictEqual(parsed.updates[0].targetDate, '2026-11-25');
+assert.strictEqual(parsed.updates[0].jira, 'RITM8019400');
 assert.strictEqual(parsed.updates[1].targetDate, '');
+assert.strictEqual(parsed.updates[1].jira, '');
 assert.strictEqual(parsed.actions.length, 4);
 assert.ok(parsed.actions.every(action => action.teamName === 'Performance Pod'));
 assert.strictEqual(parsed.actions[0].jira, 'RITM8019234');

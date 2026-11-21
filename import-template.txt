@@ -11,8 +11,8 @@
 #    A team that is already in the app keeps its name, about, and color.
 #    New people on that team are added.
 #
-# Team labels:   People:   About:   Color:   Target:
-# Update labels: Team:   People:   Type:   Tags:   Target:
+# Team labels:   People:   About:   Color:   Target:   Ticket:
+# Update labels: Team:   People:   Type:   Tags:   Target:   Ticket:
 # Task labels:   Who:   Team:   Urgent:   Status:   Due:   Target:   Ticket:   Notes:   Repeats:
 #
 # Type: Meeting, Discussion, PR review, Approval, Audit, Planning, Issue, Other
@@ -24,10 +24,10 @@
 # A team already in the app keeps its color. Open Teams in the app to see it.
 
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026 | Ticket: PERF-120
 
 17 Nov 2026
-- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026
+- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026 | Ticket: RITM8019400
 - Morning sync on the MB app slow screens | Team: Performance Pod | People: Murthy | Type: Meeting | Tags: mb app
 
 18 Nov 2026

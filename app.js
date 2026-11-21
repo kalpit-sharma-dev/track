@@ -118,16 +118,19 @@ function ensureDataShape() {
         if (!update.description) update.description = '';
         if (!update.people) update.people = '';
         if (!update.targetDate) update.targetDate = '';
+        if (!update.jira) update.jira = '';
     });
     appData.actions.forEach(action => {
         if (!action.priority) action.priority = 'medium';
         if (!action.status) action.status = 'pending';
         if (!action.owner) action.owner = 'Me';
         if (!action.title) action.title = 'Untitled task';
+        if (!action.jira) action.jira = '';
     });
     appData.teams.forEach(team => {
         team.color = safeColor(team.color);
         if (!team.targetDate) team.targetDate = '';
+        if (!team.jira) team.jira = '';
     });
 }
 
@@ -187,7 +190,7 @@ function buildSearchIndex() {
                 update.description, update.people, update.category,
                 ...(update.tags || []), update.date, dateText, update.targetDate,
                 update.targetDate ? `${formatDate(update.targetDate)} ${formatDate(update.targetDate, 'short')}` : '',
-                team?.name
+                update.jira, team?.name
             ]),
             update,
             teamName: team?.name || ''
@@ -215,7 +218,7 @@ function buildSearchIndex() {
             type: 'team',
             id: team.id,
             haystack: searchText([
-                team.name, team.description, team.members, team.targetDate,
+                team.name, team.description, team.members, team.targetDate, team.jira,
                 team.targetDate ? `${formatDate(team.targetDate)} ${formatDate(team.targetDate, 'short')}` : ''
             ]),
             team
@@ -295,6 +298,7 @@ function renderSearchResults(results, query) {
                     ${row.teamName ? ` • ${escapeHtml(row.teamName)}` : ''}
                     ${row.update.people ? ` • ${escapeHtml(row.update.people)}` : ''}
                     ${row.update.targetDate ? ` • Target ${formatDate(row.update.targetDate, 'short')}` : ''}
+                    ${row.update.jira ? ` • ${escapeHtml(row.update.jira)}` : ''}
                 </div>
             </div>
         `)}
@@ -315,6 +319,7 @@ function renderSearchResults(results, query) {
                 <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
                     ${escapeHtml(row.team.members || row.team.description || 'No members listed')}
                     ${row.team.targetDate ? ` • Target ${formatDate(row.team.targetDate, 'short')}` : ''}
+                    ${row.team.jira ? ` • ${escapeHtml(row.team.jira)}` : ''}
                 </div>
             </div>
         `)}
@@ -623,6 +628,7 @@ function saveUpdate(event) {
         id: generateId(),
         date: document.getElementById('updateDate').value,
         targetDate: document.getElementById('updateTargetDate').value,
+        jira: document.getElementById('updateJira').value.trim(),
         category: document.getElementById('updateCategory').value,
         teamId: document.getElementById('updateTeam').value,
         description: document.getElementById('updateDescription').value,
@@ -736,6 +742,7 @@ function renderUpdates(filteredUpdates = null) {
                     </div>
                     <p class="update-description">${escapeHtml(update.description)}</p>
                     ${update.targetDate ? `<p class="target-date">Target ${escapeHtml(formatDate(update.targetDate))}</p>` : ''}
+                    ${update.jira ? `<span class="action-jira">${escapeHtml(update.jira)}</span>` : ''}
                     ${update.people ? `<p class="update-people"><strong>With:</strong> ${escapeHtml(update.people)}</p>` : ''}
                     ${tagsHtml}
                 </div>
@@ -768,6 +775,7 @@ function openEditUpdateModal(id) {
     document.getElementById('editUpdateId').value = update.id;
     document.getElementById('editUpdateDate').value = update.date;
     document.getElementById('editUpdateTargetDate').value = update.targetDate || '';
+    document.getElementById('editUpdateJira').value = update.jira || '';
     document.getElementById('editUpdateCategory').value = update.category;
     document.getElementById('editUpdateDescription').value = update.description;
     document.getElementById('editUpdatePeople').value = update.people || '';
@@ -796,6 +804,7 @@ function updateUpdate(event) {
     
     update.date = document.getElementById('editUpdateDate').value;
     update.targetDate = document.getElementById('editUpdateTargetDate').value;
+    update.jira = document.getElementById('editUpdateJira').value.trim();
     update.category = document.getElementById('editUpdateCategory').value;
     update.teamId = document.getElementById('editUpdateTeam').value;
     update.description = document.getElementById('editUpdateDescription').value;
@@ -887,7 +896,7 @@ function saveAction(event) {
         priority: document.getElementById('actionPriority').value,
         dueDate: document.getElementById('actionDueDate').value,
         teamId: document.getElementById('actionTeam').value,
-        jira: document.getElementById('actionJira').value,
+        jira: document.getElementById('actionJira').value.trim(),
         recurring: document.getElementById('actionRecurring').value,
         status: 'pending',
         notes: '',
@@ -1098,7 +1107,7 @@ function updateAction(event) {
     action.dueDate = document.getElementById('editActionDueDate').value;
     action.notes = document.getElementById('editActionNotes').value;
     action.teamId = document.getElementById('editActionTeam').value;
-    action.jira = document.getElementById('editActionJira').value;
+    action.jira = document.getElementById('editActionJira').value.trim();
     action.recurring = document.getElementById('editActionRecurring').value;
     
     if (wasNotCompleted && action.status === 'completed') {
@@ -1197,6 +1206,7 @@ function saveTeam(event) {
         description: document.getElementById('teamDescription').value,
         members: document.getElementById('teamMembers').value,
         targetDate: document.getElementById('teamTargetDate').value,
+        jira: document.getElementById('teamJira').value.trim(),
         color: document.getElementById('teamColor').value
     };
     
@@ -1242,6 +1252,7 @@ function renderTeams() {
                         <strong>Members:</strong> <span>${escapeHtml(team.members || 'Not specified')}</span>
                     </div>
                     ${team.targetDate ? `<p class="target-date">Target ${escapeHtml(formatDate(team.targetDate))}</p>` : ''}
+                    ${team.jira ? `<span class="action-jira">${escapeHtml(team.jira)}</span>` : ''}
                     <div class="team-actions">
                         <button class="btn btn-small btn-primary" onclick="openEditTeamModal('${team.id}')">✏️ Edit</button>
                         <button class="btn btn-small btn-secondary" onclick="deleteTeam('${team.id}')">🗑️ Delete</button>
@@ -1271,6 +1282,7 @@ function openEditTeamModal(id) {
     document.getElementById('editTeamDescription').value = team.description || '';
     document.getElementById('editTeamMembers').value = team.members || '';
     document.getElementById('editTeamTargetDate').value = team.targetDate || '';
+    document.getElementById('editTeamJira').value = team.jira || '';
     document.getElementById('editTeamColor').value = team.color || '#4F46E5';
     
     openModal('editTeamModal');
@@ -1287,6 +1299,7 @@ function updateTeam(event) {
     team.description = document.getElementById('editTeamDescription').value;
     team.members = document.getElementById('editTeamMembers').value;
     team.targetDate = document.getElementById('editTeamTargetDate').value;
+    team.jira = document.getElementById('editTeamJira').value.trim();
     team.color = document.getElementById('editTeamColor').value;
     
     saveData();
@@ -1373,7 +1386,7 @@ function renderRecentUpdates() {
             <div class="recent-update-date">${formatDate(update.date, 'short')}</div>
             <div class="recent-update-content">
                 <div class="recent-update-title">${escapeHtml((update.description || '').substring(0, 60))}${(update.description || '').length > 60 ? '...' : ''}</div>
-                <div class="recent-update-category">${update.category}${update.targetDate ? ` · Target ${escapeHtml(formatDate(update.targetDate, 'short'))}` : ''}</div>
+                <div class="recent-update-category">${update.category}${update.targetDate ? ` · Target ${escapeHtml(formatDate(update.targetDate, 'short'))}` : ''}${update.jira ? ` · ${escapeHtml(update.jira)}` : ''}</div>
             </div>
         </div>
     `).join('');
@@ -1399,7 +1412,7 @@ function renderPendingActionsList() {
             <div class="recent-update-date" style="color: ${action.priority === 'high' ? 'var(--danger)' : 'var(--text-muted)'}">${action.priority.toUpperCase()}</div>
             <div class="recent-update-content">
                 <div class="recent-update-title">${escapeHtml(action.title)}</div>
-                <div class="recent-update-category">👤 ${escapeHtml(action.owner)}${action.dueDate ? ` · Target ${escapeHtml(formatDate(action.dueDate, 'short'))}` : ''}</div>
+                <div class="recent-update-category">👤 ${escapeHtml(action.owner)}${action.dueDate ? ` · Target ${escapeHtml(formatDate(action.dueDate, 'short'))}` : ''}${action.jira ? ` · ${escapeHtml(action.jira)}` : ''}</div>
             </div>
         </div>
     `).join('');
@@ -1520,6 +1533,11 @@ function actionDetail(action) {
 function targetPhrase(date) {
     if (!date) return '';
     return `target ${formatDate(date, 'short')}`;
+}
+
+function jiraPhrase(value) {
+    const text = String(value || '').trim();
+    return text ? `Jira ${text}` : '';
 }
 
 function duePhrase(action, weekEnd) {
@@ -1724,7 +1742,7 @@ function railHtml(days, color) {
 }
 
 function happenedHtml(update) {
-    const meta = [formatDate(update.date, 'short'), splitOwnerNames(update.people).join(', '), targetPhrase(update.targetDate), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean).join(' · ');
+    const meta = [formatDate(update.date, 'short'), splitOwnerNames(update.people).join(', '), targetPhrase(update.targetDate), jiraPhrase(update.jira), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean).join(' · ');
     return `<div class="happened-item">
         <p><span class="pill ${reportPillClass(update.category)}">${escapeHtml(reportCategoryLabel(update.category))}</span>${escapeHtml(update.description || 'Untitled note')}</p>
         ${meta ? `<div class="fine">${escapeHtml(meta)}</div>` : ''}
@@ -1735,7 +1753,7 @@ function workBits(action, weekEnd) {
     return [
         splitOwnerNames(action.owner).join(', ') || 'Unassigned',
         duePhrase(action, weekEnd),
-        action.jira || '',
+        jiraPhrase(action.jira),
         action.priority === 'high' ? 'High priority' : action.priority === 'low' ? 'Low priority' : '',
         action.recurring ? `Repeats ${action.recurring}` : ''
     ].filter(Boolean);
@@ -1755,7 +1773,7 @@ function doneHtml(action) {
         splitOwnerNames(action.owner).join(', ') || 'Unassigned',
         action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '',
         targetPhrase(action.dueDate),
-        action.jira || ''
+        jiraPhrase(action.jira)
     ].filter(Boolean);
     const extra = actionDetail(action);
     return `<div class="work-row">
@@ -1828,7 +1846,7 @@ function renderWeeklyHtml(model) {
         ? `<div class="quiet-teams"><div class="section-label">Quiet this week</div><p>${escapeHtml(joinNames(quietNames))} had no notes and no open work in this week.</p></div>`
         : '';
     const attention = blockers.length ? `<section class="mgmt-callout"><h4>Needs attention</h4><ul>${blockers.map(action => {
-        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), action.jira, actionDetail(action)].filter(Boolean);
+        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), jiraPhrase(action.jira), actionDetail(action)].filter(Boolean);
         return `<li><strong>${escapeHtml(action.title)}</strong> — ${escapeHtml(bits.join(' · '))}</li>`;
     }).join('')}</ul></section>` : '';
     const peopleBoard = people.length ? `<section class="people-board"><div class="section-label">Who was involved</div><div class="people-chips">${people.map(person => {
@@ -2102,6 +2120,7 @@ function applyTextImportPlan(plan) {
             description: team.description || '',
             members: team.members || '',
             targetDate: team.targetDate || '',
+            jira: team.jira || '',
             color: team.color && team.color !== '#6366F1'
                 ? team.color
                 : IMPORT_TEAM_COLORS[appData.teams.length % IMPORT_TEAM_COLORS.length]
@@ -2124,6 +2143,7 @@ function applyTextImportPlan(plan) {
             id: generateId(),
             date: update.date,
             targetDate: update.targetDate || '',
+            jira: update.jira || '',
             category: update.category,
             teamId: team ? team.id : '',
             description: update.description,
@@ -2647,25 +2667,25 @@ function renderTagsCloud(updates = appData.updates) {
 
 function teamReportSubtitle(pack) {
     const peopleLine = namedPeople(pack).join(', ') || 'No people named';
-    return [pack.team && pack.team.description, peopleLine, targetPhrase(pack.team && pack.team.targetDate)].filter(Boolean).join(' · ');
+    return [pack.team && pack.team.description, peopleLine, targetPhrase(pack.team && pack.team.targetDate), jiraPhrase(pack.team && pack.team.jira)].filter(Boolean).join(' · ');
 }
 
 function quietTeamLabel(pack) {
-    const target = targetPhrase(pack.team && pack.team.targetDate);
-    return target ? `${pack.team.name} (${target})` : pack.team.name;
+    const extras = [targetPhrase(pack.team && pack.team.targetDate), jiraPhrase(pack.team && pack.team.jira)].filter(Boolean);
+    return extras.length ? `${pack.team.name} (${extras.join(', ')})` : pack.team.name;
 }
 
 function emailActionLine(action, weekEnd, finished) {
     const status = finished ? 'Done' : reportStatusLabel(action.status);
     const bits = finished
-        ? [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '', targetPhrase(action.dueDate), action.jira || ''].filter(Boolean)
+        ? [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.completedAt ? `finished ${formatDate(action.completedAt, 'short')}` : '', targetPhrase(action.dueDate), jiraPhrase(action.jira)].filter(Boolean)
         : workBits(action, weekEnd);
     const detail = actionDetail(action);
     return `• ${status} · ${action.title}\n  ${bits.join(' · ')}${detail ? `\n  ${detail}` : ''}`;
 }
 
 function emailUpdateLine(update) {
-    const meta = [formatDate(update.date, 'short'), reportCategoryLabel(update.category), splitOwnerNames(update.people).join(', ') || 'No people named', targetPhrase(update.targetDate), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean);
+    const meta = [formatDate(update.date, 'short'), reportCategoryLabel(update.category), splitOwnerNames(update.people).join(', ') || 'No people named', targetPhrase(update.targetDate), jiraPhrase(update.jira), (update.tags || []).map(tag => `#${tag}`).join(' ')].filter(Boolean);
     return `• ${meta.join(' · ')}\n  ${update.description || 'Untitled note'}`;
 }
 
@@ -2727,7 +2747,7 @@ function buildWeeklyEmail(model) {
     lines.push('', 'NEEDS ATTENTION');
     if (!blockers.length) lines.push('• No blockers are open.');
     blockers.forEach(action => {
-        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), action.jira, actionDetail(action)].filter(Boolean);
+        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), jiraPhrase(action.jira), actionDetail(action)].filter(Boolean);
         lines.push(`• ${action.title}`);
         lines.push(`  ${bits.join(' · ')}`);
     });

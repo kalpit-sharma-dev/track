@@ -231,7 +231,7 @@ You can also just double-click `index.html` - all features work! The local serve
    - A short read of the week
    - What happened, with the day, the type of work, and who was there
    - Who is working on what, with status, target date, and ticket
-   - The target date on each note, task, and team that has one
+   - The target date and Jira number on each note, task, and team that has one
    - Blockers that need attention
    - Teams with no movement that week
 
@@ -299,10 +299,10 @@ Use **Upload Notes** when the day is already written in a text file. This **adds
 
 ```
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026 | Ticket: PERF-120
 
 17 Nov 2026
-- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026
+- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026 | Ticket: RITM8019400
 - Morning sync on the MB app slow screens | Team: Performance Pod | People: Murthy | Type: Meeting | Tags: mb app
 
 18 Nov 2026
@@ -334,7 +334,7 @@ A date and a dashed line are enough. Add the words after `|` when you have them:
 | `Urgent:` | High, Medium, or Low |
 | `Status:` | Pending, In progress, Blocked, or Done |
 | `Due:` or `Target:` | 21 Nov 2026. On a note or a team this is the target date. On a task, `Due:` and `Target:` are the same date |
-| `Ticket:` | RITM8019234 |
+| `Ticket:` or `Jira:` | RITM8019234. Works on a team, a note, and a task |
 | `Notes:` | Extra detail for a task |
 | `Repeats:` | Daily, Weekly, Biweekly, or Monthly |
 

@@ -6,7 +6,7 @@
 const IMPORT_FIELDS = [
     'NAME', 'DESCRIPTION', 'MEMBERS', 'COLOR',
     'DATE', 'CATEGORY', 'TEAM', 'PEOPLE', 'TAGS', 'TEXT', 'TARGET',
-    'TITLE', 'OWNER', 'PRIORITY', 'STATUS', 'DUE', 'JIRA', 'RECURRING', 'NOTES'
+    'TITLE', 'OWNER', 'PRIORITY', 'STATUS', 'DUE', 'JIRA', 'TICKET', 'RECURRING', 'NOTES'
 ];
 
 const CATEGORY_ALIASES = {
@@ -187,7 +187,8 @@ function parseSimpleNotes(text) {
                 description: parsedLine.details.about || '',
                 members: parsedLine.details.people || '',
                 color: normalizeColor(parsedLine.details.color),
-                targetDate: targetDate || ''
+                targetDate: targetDate || '',
+                jira: parsedLine.details.ticket || ''
             });
             return;
         }
@@ -227,6 +228,7 @@ function parseSimpleNotes(text) {
             line: lineNo,
             date: currentDate,
             targetDate: targetDate || '',
+            jira: parsedLine.details.ticket || '',
             category: category.value,
             categoryWarning: category.warning,
             teamName: parsedLine.details.team || '',
@@ -258,6 +260,7 @@ const SIMPLE_DETAIL_KEYS = {
     'target date': 'target',
     ticket: 'ticket',
     jira: 'ticket',
+    'jira number': 'ticket',
     status: 'status',
     notes: 'notes',
     repeats: 'repeats',
@@ -321,7 +324,8 @@ function parseStructuredImport(text) {
                 description: fields.DESCRIPTION || '',
                 members: fields.MEMBERS || '',
                 color: normalizeColor(fields.COLOR),
-                targetDate: teamTarget || ''
+                targetDate: teamTarget || '',
+                jira: fields.JIRA || fields.TICKET || ''
             });
             return;
         }
@@ -343,6 +347,7 @@ function parseStructuredImport(text) {
                 line: start,
                 date,
                 targetDate: targetDate || '',
+                jira: fields.JIRA || fields.TICKET || '',
                 category: category.value,
                 categoryWarning: category.warning,
                 teamName: fields.TEAM || '',
@@ -373,7 +378,7 @@ function parseStructuredImport(text) {
                 status: normalizeStatus(fields.STATUS),
                 dueDate: due || '',
                 teamName: fields.TEAM || '',
-                jira: fields.JIRA || '',
+                jira: fields.JIRA || fields.TICKET || '',
                 recurring: normalizeRecurring(fields.RECURRING),
                 notes: fields.NOTES || ''
             });
@@ -561,8 +566,8 @@ const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace 
 #    A team that is already in the app keeps its name, about, and color.
 #    New people on that team are added.
 #
-# Team labels:   People:   About:   Color:   Target:
-# Update labels: Team:   People:   Type:   Tags:   Target:
+# Team labels:   People:   About:   Color:   Target:   Ticket:
+# Update labels: Team:   People:   Type:   Tags:   Target:   Ticket:
 # Task labels:   Who:   Team:   Urgent:   Status:   Due:   Target:   Ticket:   Notes:   Repeats:
 #
 # Type: Meeting, Discussion, PR review, Approval, Audit, Planning, Issue, Other
@@ -574,10 +579,10 @@ const IMPORT_TEMPLATE = `# One complete team — copy this sample, then replace 
 # A team already in the app keeps its color. Open Teams in the app to see it.
 
 Teams
-- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026
+- Performance Pod | People: Murthy, Rajesh | About: App performance and reliability | Color: Red | Target: 30 Nov 2026 | Ticket: PERF-120
 
 17 Nov 2026
-- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026
+- Discussed the golang monitoring gap with the perf SRE team | Team: Performance Pod | People: Murthy, Rajesh | Type: Discussion | Tags: golang, monitoring | Target: 25 Nov 2026 | Ticket: RITM8019400
 - Morning sync on the MB app slow screens | Team: Performance Pod | People: Murthy | Type: Meeting | Tags: mb app
 
 18 Nov 2026

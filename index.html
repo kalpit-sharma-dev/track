@@ -437,6 +437,10 @@
                     <input type="text" id="updateTags" placeholder="e.g., urgent, follow-up, blocked">
                     <div class="tag-suggestions" id="tagSuggestions"></div>
                 </div>
+                <div class="form-group">
+                    <label>Jira number (optional)</label>
+                    <input type="text" id="updateJira" placeholder="e.g., RITM8019234">
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('addUpdateModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Update</button>
@@ -488,7 +492,7 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Related JIRA/Ticket (Optional)</label>
+                    <label>Jira number (optional)</label>
                     <input type="text" id="actionJira" placeholder="e.g., RITM8019234">
                 </div>
                 <div class="form-group">
@@ -532,6 +536,10 @@
                 <div class="form-group">
                     <label>Target date (optional)</label>
                     <input type="date" id="teamTargetDate">
+                </div>
+                <div class="form-group">
+                    <label>Jira number (optional)</label>
+                    <input type="text" id="teamJira" placeholder="e.g., RITM8019234">
                 </div>
                 <div class="form-group">
                     <label>Color</label>
@@ -595,6 +603,10 @@
                     <label>Tags (comma separated)</label>
                     <input type="text" id="editUpdateTags" placeholder="e.g., urgent, follow-up, blocked">
                 </div>
+                <div class="form-group">
+                    <label>Jira number (optional)</label>
+                    <input type="text" id="editUpdateJira" placeholder="e.g., RITM8019234">
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-danger" onclick="deleteUpdateFromModal()">Delete</button>
                     <button type="button" class="btn btn-secondary" onclick="closeModal('editUpdateModal')">Cancel</button>
@@ -628,6 +640,10 @@
                 <div class="form-group">
                     <label>Target date (optional)</label>
                     <input type="date" id="editTeamTargetDate">
+                </div>
+                <div class="form-group">
+                    <label>Jira number (optional)</label>
+                    <input type="text" id="editTeamJira" placeholder="e.g., RITM8019234">
                 </div>
                 <div class="form-group">
                     <label>Color</label>
@@ -707,7 +723,7 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Related JIRA/Ticket</label>
+                    <label>Jira number (optional)</label>
                     <input type="text" id="editActionJira" placeholder="e.g., RITM8019234">
                 </div>
                 <div class="form-group">
