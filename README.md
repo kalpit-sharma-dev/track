@@ -237,6 +237,9 @@ Weekly, monthly, quarterly, and yearly reports use the same layout.
    - A timeline for the period: days for a week or month, weeks for a quarter, and months for a year
    - Blockers that need attention
    - Teams with no movement in that period
+   - A week, month, quarter, or year with no new note still shows work that is still in progress, and otherwise the latest saved update for each team, so the report is not empty
+
+**Self appraisal:** **Self appraisal** in the sidebar downloads a PDF with the five appraisal points: Technical Leadership & Ownership, Delivery Excellence, Tech Backlog, Stakeholder Collaboration, and People Leadership. Each point is filled from the updates and tasks you saved.
 
 **Exporting:**
 - **Copy for Email**: Copies a plain-text update you can paste into Outlook or Gmail

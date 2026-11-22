@@ -1701,6 +1701,33 @@ function compareOpenActions(a, b) {
     return String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999'));
 }
 
+function addDays(date, days) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+}
+
+function updateVisibleThrough(update) {
+    const date = parseLocalDate(update.date);
+    if (!date) return null;
+    const target = parseLocalDate(update.targetDate);
+    if (target && target >= date) return endOfDay(target);
+    if (update.status === 'completed') return endOfDay(date);
+    return endOfDay(addDays(date, 28));
+}
+
+function latestNotesBefore(weekEnd) {
+    const newest = new Map();
+    appData.updates.forEach(update => {
+        const date = parseLocalDate(update.date);
+        if (!date || date > weekEnd) return;
+        const key = update.teamId || '';
+        const current = newest.get(key);
+        if (!current || String(update.date) > String(current.date)) newest.set(key, update);
+    });
+    return [...newest.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
 function collectWeeklyModel(weekStart, weekEnd) {
     const withTeam = item => ({ ...item, teamName: teamById(item.teamId)?.name || '' });
     const updates = appData.updates
@@ -1710,6 +1737,16 @@ function collectWeeklyModel(weekStart, weekEnd) {
         })
         .map(withTeam)
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const loggedIds = new Set(updates.map(update => update.id));
+    const carried = appData.updates
+        .filter(update => {
+            if (loggedIds.has(update.id)) return false;
+            const date = parseLocalDate(update.date);
+            const until = updateVisibleThrough(update);
+            return date && until && date < weekStart && until >= weekStart;
+        })
+        .map(withTeam)
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const doneActions = appData.actions
         .filter(action => {
             if (!action.completedAt) return false;
@@ -1722,24 +1759,35 @@ function collectWeeklyModel(weekStart, weekEnd) {
         .filter(action => action.status !== 'completed' && activeDuringWeek(action, weekStart, weekEnd))
         .map(withTeam)
         .sort(compareOpenActions);
-    return { weekStart, weekEnd, updates, doneActions, openActions };
+    let showcase = [];
+    if (!updates.length && !carried.length && !openActions.length && !doneActions.length) {
+        showcase = latestNotesBefore(weekEnd).map(withTeam);
+    }
+    return { weekStart, weekEnd, updates, carried, showcase, doneActions, openActions };
 }
 
 function bucketByTeam(model) {
     const known = new Set(appData.teams.map(team => team.id));
+    const carried = model.carried || [];
+    const showcase = model.showcase || [];
+    const hasWork = pack => pack.updates.length || pack.carried.length || pack.showcase.length || pack.open.length || pack.done.length;
     const packs = appData.teams.map(team => ({
         team,
         updates: model.updates.filter(update => update.teamId === team.id),
+        carried: carried.filter(update => update.teamId === team.id),
+        showcase: showcase.filter(update => update.teamId === team.id),
         open: model.openActions.filter(action => action.teamId === team.id),
         done: model.doneActions.filter(action => action.teamId === team.id)
     }));
     return {
         active: packs
-            .filter(pack => pack.updates.length || pack.open.length || pack.done.length)
-            .sort((a, b) => (b.updates.length + b.done.length + b.open.length) - (a.updates.length + a.done.length + a.open.length) || a.team.name.localeCompare(b.team.name)),
-        quiet: packs.filter(pack => !pack.updates.length && !pack.open.length && !pack.done.length),
+            .filter(hasWork)
+            .sort((a, b) => (b.updates.length + b.carried.length + b.showcase.length + b.done.length + b.open.length) - (a.updates.length + a.carried.length + a.showcase.length + a.done.length + a.open.length) || a.team.name.localeCompare(b.team.name)),
+        quiet: packs.filter(pack => !hasWork(pack)),
         loose: {
             updates: model.updates.filter(update => !known.has(update.teamId)),
+            carried: carried.filter(update => !known.has(update.teamId)),
+            showcase: showcase.filter(update => !known.has(update.teamId)),
             open: model.openActions.filter(action => !known.has(action.teamId)),
             done: model.doneActions.filter(action => !known.has(action.teamId))
         }
@@ -1753,7 +1801,7 @@ function peopleThisWeek(model) {
         if (!people.has(key)) people.set(key, { name, notes: 0, open: 0, done: 0, blocked: 0, teams: new Set() });
         return people.get(key);
     };
-    model.updates.forEach(update => {
+    [...model.updates, ...(model.carried || []), ...(model.showcase || [])].forEach(update => {
         splitOwnerNames(update.people).forEach(name => {
             const person = entry(name);
             person.notes += 1;
@@ -1787,14 +1835,21 @@ function namedPeople(pack) {
 }
 
 function managementLead(model, buckets, people) {
-    if (!model.updates.length && !model.doneActions.length && !model.openActions.length) {
-        return `Nothing was logged for this ${model.periodName || 'week'}, and no open work falls inside it.`;
+    const carried = model.carried || [];
+    const showcase = model.showcase || [];
+    const periodName = model.periodName || 'week';
+    if (!model.updates.length && !carried.length && !showcase.length && !model.doneActions.length && !model.openActions.length) {
+        return `Nothing was logged for this ${periodName}, and no open work falls inside it.`;
     }
     const sentences = [];
     if (model.updates.length && buckets.active.length) {
         sentences.push(`${countWord(model.updates.length, 'note', 'notes')} across ${countWord(buckets.active.length, 'team', 'teams')}.`);
     } else if (model.updates.length) {
         sentences.push(`${countWord(model.updates.length, 'note', 'notes')} were logged, and none are tagged to a team.`);
+    } else if (carried.length) {
+        sentences.push(`No new notes were logged. ${countWord(carried.length, 'item is', 'items are')} still in progress from earlier, so this ${periodName} still has work to show.`);
+    } else if (showcase.length) {
+        sentences.push(`No new notes were logged. The latest saved work is included so this ${periodName} is not empty.`);
     } else {
         sentences.push('No new notes were logged.');
     }
@@ -1826,7 +1881,7 @@ function insightTiles(model, buckets, people) {
         tiles.push({
             kicker: 'Busiest team',
             title: pack.team.name,
-            detail: `${countWord(pack.updates.length, 'note', 'notes')}, ${countWord(pack.open.length, 'open task', 'open tasks')}, ${countWord(pack.done.length, 'finished', 'finished')}`
+            detail: `${countWord(pack.updates.length + (pack.carried || []).length + (pack.showcase || []).length, 'note', 'notes')}, ${countWord(pack.open.length, 'open task', 'open tasks')}, ${countWord(pack.done.length, 'finished', 'finished')}`
         });
     } else {
         tiles.push({ kicker: 'Busiest team', title: 'No team activity', detail: 'Tag a note or a task to a team and it will show up here.' });
@@ -1994,8 +2049,10 @@ function doneHtml(action) {
 
 function teamCardHtml(pack, model, color, title, subtitle) {
     const blockers = pack.open.filter(action => action.status === 'blocked').length;
+    const carried = pack.carried || [];
+    const showcase = pack.showcase || [];
     const counts = [
-        countWord(pack.updates.length, 'note', 'notes'),
+        countWord(pack.updates.length + carried.length + showcase.length, 'note', 'notes'),
         countWord(pack.open.length, 'open', 'open'),
         countWord(pack.done.length, 'finished', 'finished')
     ];
@@ -2017,7 +2074,9 @@ function teamCardHtml(pack, model, color, title, subtitle) {
             <div class="team-split">
                 <div>
                     <h4>What happened</h4>
-                    ${pack.updates.length ? pack.updates.map(happenedHtml).join('') : `<p class="fine">No notes this ${escapeHtml(model.periodName || 'week')}.</p>`}
+                    ${pack.updates.length ? pack.updates.map(happenedHtml).join('') : `<p class="fine">No new notes this ${escapeHtml(model.periodName || 'week')}.</p>`}
+                    ${carried.length ? `<h4 class="split-follow">Still in progress</h4><p class="fine">Logged earlier, and still open in this ${escapeHtml(model.periodName || 'week')}.</p>${carried.map(happenedHtml).join('')}` : ''}
+                    ${showcase.length ? `<h4 class="split-follow">Latest work to show</h4><p class="fine">Nothing new was logged in this ${escapeHtml(model.periodName || 'week')}. These are the latest updates.</p>${showcase.map(happenedHtml).join('')}` : ''}
                 </div>
                 <div>
                     <h4>Who is working on what</h4>
@@ -2047,7 +2106,7 @@ function renderWeeklyHtml(model) {
     const cards = buckets.active.map(pack => {
         return teamCardHtml(pack, model, pack.team.color, pack.team.name, teamReportSubtitle(pack));
     }).join('');
-    const looseHas = buckets.loose.updates.length || buckets.loose.open.length || buckets.loose.done.length;
+    const looseHas = buckets.loose.updates.length || (buckets.loose.carried || []).length || (buckets.loose.showcase || []).length || buckets.loose.open.length || buckets.loose.done.length;
     const loose = looseHas
         ? teamCardHtml({ ...buckets.loose, team: { members: '' } }, model, '#64748B', 'Not tagged to a team', 'These notes and tasks have no team, so they are easy to miss.')
         : '';
@@ -2259,6 +2318,200 @@ async function buildExactReportDocument(report) {
     };
 }
 
+function appraisalItems() {
+    const teamName = item => teamById(item.teamId)?.name || '';
+    const updates = appData.updates.map(update => ({
+        kind: 'update',
+        text: update.description || 'Untitled note',
+        date: update.date,
+        teamName: teamName(update),
+        people: update.people || '',
+        jira: update.jira || '',
+        category: update.category || '',
+        status: update.status || '',
+        tags: update.tags || []
+    }));
+    const actions = appData.actions.map(action => ({
+        kind: 'action',
+        text: action.title || 'Untitled task',
+        date: action.completedAt || action.dueDate || action.createdAt || '',
+        teamName: teamName(action),
+        people: action.owner || '',
+        jira: action.jira || '',
+        category: '',
+        status: action.status || '',
+        tags: []
+    }));
+    return { updates, actions };
+}
+
+function appraisalBlob(item) {
+    return [item.text, item.teamName, item.category, item.status, ...(item.tags || [])].join(' ').toLowerCase();
+}
+
+function appraisalSectionFor(item) {
+    const blob = appraisalBlob(item);
+    if (item.teamName.toLowerCase() === 'techbacklog' || blob.includes('backlog')) return 'backlog';
+    if (/mentor|junior|coaching|guided|guidance|unblock/.test(blob)) return 'people';
+    if (item.kind === 'update' && (item.category === 'meeting' || item.category === 'discussion')) return 'stakeholders';
+    if (item.status === 'completed' || item.category === 'approval' || item.category === 'review') return 'delivery';
+    return 'leadership';
+}
+
+function leadershipGroup(item) {
+    const blob = appraisalBlob(item);
+    if (/security|compliance|audit|checkmarx|mfa|risk|secret|vulnerab/.test(blob)) return 'Security, Compliance & Risk Management';
+    if (/performance|latency|observ|reliab|slow|sre/.test(blob)) return 'Performance, Observability & Reliability';
+    if (/deliver|release|newsletter|production/.test(blob)) return 'Critical Delivery Impact';
+    return 'Enterprise-Level Architecture & Solutioning';
+}
+
+function appraisalBullet(item) {
+    const when = item.date ? formatDate(String(item.date).slice(0, 10), 'short') : '';
+    const bits = [when, item.teamName, item.people, item.jira ? `Jira ${item.jira}` : '', item.category ? reportCategoryLabel(item.category) : '', item.status ? reportStatusLabel(item.status) : ''].filter(Boolean);
+    return `<li><strong>${escapeHtml(item.text)}</strong>${bits.length ? ` <span class="meta">— ${escapeHtml(bits.join(' · '))}</span>` : ''}</li>`;
+}
+
+function appraisalList(items, numbered) {
+    if (!items.length) return '<p class="empty">Nothing logged for this point yet. Add an update and it will appear here.</p>';
+    const bullets = items.map(appraisalBullet).join('');
+    return numbered ? `<ol>${bullets}</ol>` : `<ul>${bullets}</ul>`;
+}
+
+function buildAppraisalDocument() {
+    const name = yourName();
+    const { updates, actions } = appraisalItems();
+    const all = updates.concat(actions);
+    const groups = { leadership: [], delivery: [], backlog: [], stakeholders: [], people: [] };
+    all.forEach(item => groups[appraisalSectionFor(item)].push(item));
+    const peopleNames = [...new Set(updates.flatMap(item => splitOwnerNames(item.people)))];
+    if (!groups.people.length && peopleNames.length) {
+        groups.people.push({
+            kind: 'update',
+            text: `Worked with ${peopleNames.join(', ')} across the saved updates.`,
+            date: '',
+            teamName: '',
+            people: '',
+            jira: '',
+            category: '',
+            status: '',
+            tags: []
+        });
+    }
+    const leadershipOrder = [
+        'Enterprise-Level Architecture & Solutioning',
+        'Security, Compliance & Risk Management',
+        'Performance, Observability & Reliability',
+        'Critical Delivery Impact'
+    ];
+    const leadershipHtml = leadershipOrder.map(title => {
+        const items = groups.leadership.filter(item => leadershipGroup(item) === title);
+        if (!items.length) return '';
+        return `<h3>${escapeHtml(title)}</h3>${appraisalList(items, false)}`;
+    }).join('');
+    const dates = updates.map(item => item.date).filter(Boolean).sort();
+    const range = dates.length ? `${formatDate(dates[0], 'short')} – ${formatDate(dates[dates.length - 1], 'short')}` : 'the dates saved in the tracker';
+    const teamNames = [...new Set(all.map(item => item.teamName).filter(Boolean))];
+    const summary = [
+        teamNames.length ? `Ownership across ${teamNames.join(', ')}.` : '',
+        `${countWord(updates.length, 'update', 'updates')} logged and ${countWord(actions.filter(item => item.status === 'completed').length, 'task', 'tasks')} finished.`,
+        peopleNames.length ? `Collaboration with ${peopleNames.join(', ')}.` : '',
+        groups.delivery.length ? `${countWord(groups.delivery.length, 'delivery item', 'delivery items')} called out below.` : '',
+        groups.backlog.length ? `${countWord(groups.backlog.length, 'tech backlog item', 'tech backlog items')} called out below.` : ''
+    ].filter(Boolean);
+    const section = (number, title, body) => `<section><h2><span>${number}</span> ${escapeHtml(title)}</h2>${body}</section>`;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Appraisal Write-Up – ${escapeHtml(name)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&amp;display=swap">
+<style>
+  @page { size: A4; margin: 16mm; }
+  body { font-family: Inter, sans-serif; color: #1E1B4B; margin: 0; font-size: 12.5px; line-height: 1.45; }
+  .banner { color: #6366F1; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-align: center; }
+  h1 { font-size: 28px; line-height: 1.15; margin: 8px 0 12px; }
+  h2 { font-size: 18px; margin: 22px 0 8px; break-after: avoid; }
+  h2 span { color: #059669; margin-right: 6px; }
+  h3 { font-size: 14px; margin: 12px 0 4px; break-after: avoid; }
+  p { margin: 0 0 8px; }
+  ul, ol { margin: 4px 0 10px; padding-left: 22px; }
+  li { margin: 4px 0; break-inside: avoid; }
+  .meta { color: #475569; font-weight: 400; }
+  .empty { color: #64748B; font-style: italic; }
+  .summary { background: #F8FAFC; border-radius: 12px; padding: 12px 14px; break-inside: avoid; }
+</style>
+</head>
+<body>
+<p class="banner">Classification - Internal</p>
+<h1>Promotion &amp; Performance Appraisal Write-Up – ${escapeHtml(name)}</h1>
+<p>Over ${escapeHtml(range)}, ${escapeHtml(name)} logged ${escapeHtml(countWord(updates.length, 'update', 'updates'))}${teamNames.length ? ` across ${escapeHtml(teamNames.join(', '))}` : ''}. This write-up keeps the five appraisal points and fills each one from those saved updates and tasks.</p>
+${section('1.', 'Technical Leadership & Ownership', leadershipHtml || appraisalList(groups.leadership, false))}
+${section('2.', 'Delivery Excellence – Key Items Delivered', `<h3>Major Functional Deliveries</h3>${appraisalList(groups.delivery, true)}`)}
+${section('3.', 'Tech Backlog – High Impact Items Closed', `<p>Below is a consolidated summary of Tech Backlog items saved in the tracker.</p>${appraisalList(groups.backlog, false)}`)}
+${section('4.', 'Stakeholder Collaboration & Cross-Functional Impact', `<p>End-to-end communication recorded in meetings and discussions.</p>${appraisalList(groups.stakeholders, false)}`)}
+${section('5.', 'People Leadership & Team Value', appraisalList(groups.people, false))}
+<section class="summary">
+  <h2><span>★</span> Summary – Why I am ready for the next role</h2>
+  <p>I have been managing the work recorded in this tracker across solutioning, delivery, and the teams named above.</p>
+  <p><strong>I have demonstrated:</strong></p>
+  <ul>${summary.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
+  <p>I respectfully submit this write-up in support of my promotion to the next leadership level.</p>
+</section>
+<p class="banner">Classification - Internal</p>
+</body>
+</html>`;
+}
+
+async function downloadPdfFile({ html, filename, width, height }) {
+    const response = await fetch('/api/report.pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html, filename, width, height })
+    });
+    if (!response.ok) {
+        const message = (await response.text()).trim();
+        throw new Error(message || 'The PDF could not be created.');
+    }
+    const blob = await response.blob();
+    if (!blob.size) throw new Error('The PDF came back empty.');
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadAppraisal() {
+    const button = document.getElementById('downloadAppraisal');
+    const previousLabel = button ? button.textContent : '';
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Preparing PDF…';
+    }
+    try {
+        await downloadPdfFile({
+            html: buildAppraisalDocument(),
+            filename: 'self-appraisal.pdf',
+            width: 900,
+            height: 1400
+        });
+    } catch (error) {
+        const message = error && error.message ? error.message : 'The PDF could not be downloaded.';
+        alert(message.includes('fetch') || message === 'Failed to fetch'
+            ? 'Start the tracker with the Mac or Windows script, then download the appraisal again.'
+            : message);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = previousLabel;
+        }
+    }
+}
+
 async function exportWeeklyReport(period = 'week') {
     const view = REPORT_VIEWS[period] || REPORT_VIEWS.week;
     generatePeriodReport(period);
@@ -2275,31 +2528,12 @@ async function exportWeeklyReport(period = 'week') {
     }
     try {
         const documentForPdf = await buildExactReportDocument(report);
-        const filename = `management-update-${latestReportModel.fileKey}.pdf`;
-        const response = await fetch('/api/report.pdf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                html: documentForPdf.html,
-                filename,
-                width: documentForPdf.width,
-                height: documentForPdf.height
-            })
+        await downloadPdfFile({
+            html: documentForPdf.html,
+            filename: `management-update-${latestReportModel.fileKey}.pdf`,
+            width: documentForPdf.width,
+            height: documentForPdf.height
         });
-        if (!response.ok) {
-            const message = (await response.text()).trim();
-            throw new Error(message || 'The PDF could not be created.');
-        }
-        const blob = await response.blob();
-        if (!blob.size) throw new Error('The PDF came back empty.');
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
     } catch (error) {
         const message = error && error.message ? error.message : 'The PDF could not be downloaded.';
         alert(message.includes('fetch') || message === 'Failed to fetch'
@@ -3190,8 +3424,18 @@ function emailTeamSection(title, subtitle, pack, model) {
         lines.push(`${day.caption}: ${day.count}`);
     });
     lines.push('', 'What happened');
-    if (!pack.updates.length) lines.push(`• No notes this ${periodName}.`);
+    if (!pack.updates.length) lines.push(`• No new notes this ${periodName}.`);
     pack.updates.forEach(update => lines.push(emailUpdateLine(update)));
+    if ((pack.carried || []).length) {
+        lines.push('', 'Still in progress');
+        lines.push('Logged earlier, and still open in this period.');
+        pack.carried.forEach(update => lines.push(emailUpdateLine(update)));
+    }
+    if ((pack.showcase || []).length) {
+        lines.push('', 'Latest work to show');
+        lines.push('Nothing new was logged in this period. These are the latest updates.');
+        pack.showcase.forEach(update => lines.push(emailUpdateLine(update)));
+    }
     lines.push('', 'Who is working on what');
     if (!pack.open.length) lines.push(`• No open tasks this ${periodName}.`);
     pack.open.forEach(action => lines.push(emailActionLine(action, model.weekEnd, false)));
@@ -3256,7 +3500,7 @@ function buildWeeklyEmail(model) {
     buckets.active.forEach(pack => {
         lines.push(emailTeamSection(pack.team.name, teamReportSubtitle(pack), pack, model));
     });
-    const looseHas = buckets.loose.updates.length || buckets.loose.open.length || buckets.loose.done.length;
+    const looseHas = buckets.loose.updates.length || (buckets.loose.carried || []).length || (buckets.loose.showcase || []).length || buckets.loose.open.length || buckets.loose.done.length;
     if (looseHas) {
         lines.push(emailTeamSection('Not tagged to a team', 'These notes and tasks have no team, so they are easy to miss.', { ...buckets.loose, team: { members: '' } }, model));
     }
