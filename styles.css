@@ -1636,6 +1636,35 @@ html {
     color: var(--text-primary);
 }
 
+.decision-ask {
+    margin: 2px 0 6px;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.moved-board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 18px;
+    margin-top: 14px;
+}
+
+.moved-group h4 {
+    margin: 0 0 6px;
+    font-size: 0.85rem;
+}
+
+.moved-group ul {
+    margin-left: 18px;
+}
+
+.moved-group li {
+    margin: 3px 0;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+}
+
 .due-kind {
     display: inline-block;
     margin-right: 4px;
@@ -2424,6 +2453,10 @@ form {
         grid-template-columns: repeat(2, 1fr);
     }
 
+    .moved-board {
+        grid-template-columns: 1fr;
+    }
+
     .mgmt-hero,
     .mgmt-body {
         padding-left: 18px;
@@ -3017,6 +3050,10 @@ form {
     .insight-row,
     .compare-row {
         grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .moved-board {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
     .team-brief-head {

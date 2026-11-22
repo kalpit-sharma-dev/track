@@ -2132,11 +2132,116 @@ function reportCounts(model) {
     };
 }
 
-function previousReportCounts(model) {
+function previousReportModel(model) {
     const range = previousPeriodRange(model);
     const previous = collectWeeklyModel(range.start, range.end);
     if (model.teamIds) filterModelToTeams(previous, model.teamIds);
-    return reportCounts(previous);
+    return previous;
+}
+
+function previousReportCounts(model) {
+    return reportCounts(previousReportModel(model));
+}
+
+function shortText(value, limit = 140) {
+    const text = String(value || '').trim() || 'Untitled';
+    return text.length > limit ? `${text.slice(0, limit - 1).trim()}…` : text;
+}
+
+function daysSince(value, today = new Date()) {
+    const date = parseLocalDate(value) || (value ? new Date(value) : null);
+    if (!date || Number.isNaN(date.getTime())) return null;
+    return Math.round((startOfDay(today) - startOfDay(date)) / 86400000);
+}
+
+function agePhrase(value, verb) {
+    const days = daysSince(value);
+    if (days === null || days < 0) return '';
+    const date = parseLocalDate(value) || new Date(value);
+    const length = days === 0 ? 'today' : days === 1 ? '1 day' : `${days} days`;
+    return `${verb} ${formatDate(date, 'short')}, ${length}`;
+}
+
+function taskMoveLine(action) {
+    const bits = [splitOwnerNames(action.owner).join(', '), action.teamName, jiraPhrase(action.jira)].filter(Boolean);
+    const title = action.title || 'Untitled';
+    return bits.length ? `${title} — ${bits.join(' · ')}` : title;
+}
+
+function movementLists(model) {
+    const previous = previousReportModel(model);
+    const nowBlockers = model.openActions.filter(action => action.status === 'blocked');
+    const previousIds = new Set(previous.openActions.filter(action => action.status === 'blocked').map(action => action.id));
+    const currentIds = new Set(nowBlockers.map(action => action.id));
+    const appeared = nowBlockers.filter(action => !previousIds.has(action.id));
+    const cleared = previous.openActions.filter(action => action.status === 'blocked' && !currentIds.has(action.id));
+    const appearedIds = new Set(appeared.map(action => action.id));
+    const start = startOfDay(model.weekStart);
+    const end = endOfDay(model.weekEnd);
+    const tasks = model.openActions.filter(action => {
+        if (appearedIds.has(action.id)) return false;
+        const created = action.createdAt ? new Date(action.createdAt) : null;
+        return created && !Number.isNaN(created.getTime()) && created >= start && created <= end;
+    });
+    return { notes: model.updates, tasks, finished: model.doneActions, appeared, cleared };
+}
+
+function blockerMoveLines(moved) {
+    const lines = [
+        ...moved.appeared.map(action => `Appeared · ${taskMoveLine(action)}`),
+        ...moved.cleared.map(action => `Cleared · ${taskMoveLine(action)}`)
+    ];
+    return lines.length ? lines : ['No blocker appeared or cleared.'];
+}
+
+function movementLines(model) {
+    const moved = movementLists(model);
+    return [
+        ['New notes', moved.notes.length ? moved.notes.map(update => shortText(update.description)) : ['No new notes.']],
+        ['New tasks', moved.tasks.length ? moved.tasks.map(taskMoveLine) : ['No new tasks.']],
+        ['Finished', moved.finished.length ? moved.finished.map(taskMoveLine) : ['No tasks finished.']],
+        ['Blockers', blockerMoveLines(moved)]
+    ];
+}
+
+function inTeamScope(item, model) {
+    return !model.teamIds || model.teamIds.includes(item.teamId);
+}
+
+function comingUpRows(model) {
+    const start = addDays(startOfDay(model.weekEnd), 1);
+    const end = addDays(startOfDay(model.weekEnd), 7);
+    const today = startOfDay(new Date());
+    const listed = new Set(reportDateRows(model).map(row => `${row.title}|${row.target}`));
+    const rows = [];
+    const add = (target, title, owner, team, jira) => {
+        const name = shortText(title);
+        const key = `${title}|${target}`;
+        if (!target || listed.has(key)) return;
+        const date = parseLocalDate(target);
+        if (!date) return;
+        const day = startOfDay(date);
+        if (day < startOfDay(start) || day > startOfDay(end)) return;
+        rows.push({
+            kind: day < today ? 'Overdue' : 'Due',
+            title: name,
+            owner: owner || 'No owner',
+            team: team || '',
+            jira: jira || '',
+            target,
+            sort: day.getTime()
+        });
+    };
+    appData.actions.forEach(action => {
+        if (action.status === 'completed' || action.status === 'blocked') return;
+        if (!inTeamScope(action, model)) return;
+        add(action.dueDate, action.title, splitOwnerNames(action.owner).join(', '), teamById(action.teamId)?.name || '', action.jira);
+    });
+    appData.updates.forEach(update => {
+        if (update.status === 'completed' || !inTeamScope(update, model)) return;
+        add(update.targetDate, update.description, splitOwnerNames(update.people).join(', '), teamById(update.teamId)?.name || '', update.jira);
+    });
+    return rows.sort((a, b) => a.sort - b.sort || a.title.localeCompare(b.title));
 }
 
 function compareChange(current, previous, periodLabel) {
@@ -2166,7 +2271,7 @@ function targetInReport(value, model) {
 function reportDateRows(model) {
     const today = startOfDay(new Date());
     const rows = [];
-    const addRow = (target, title, owner, team, jira, kind) => {
+    const addRow = (target, title, owner, team, jira, kind, openedAt) => {
         if (!target) return;
         rows.push({
             kind,
@@ -2175,28 +2280,29 @@ function reportDateRows(model) {
             team: team || '',
             jira: jira || '',
             target,
+            age: kind === 'Overdue' ? agePhrase(openedAt, 'Open since') : '',
             sort: startOfDay(parseLocalDate(target) || today).getTime()
         });
     };
-    const consider = (target, title, owner, team, jira, completed) => {
+    const consider = (target, title, owner, team, jira, completed, openedAt) => {
         const date = parseLocalDate(target);
         if (!date || completed) return;
         const overdue = startOfDay(date) < today;
         const dueNow = targetInReport(target, model);
         if (!overdue && !dueNow) return;
-        addRow(target, title, owner, team, jira, overdue ? 'Overdue' : 'Due');
+        addRow(target, title, owner, team, jira, overdue ? 'Overdue' : 'Due', openedAt);
     };
     [...model.updates, ...(model.carried || [])].forEach(update => {
-        consider(update.targetDate, update.description, splitOwnerNames(update.people).join(', '), update.teamName, update.jira, update.status === 'completed');
+        consider(update.targetDate, update.description, splitOwnerNames(update.people).join(', '), update.teamName, update.jira, update.status === 'completed', update.date);
     });
     model.openActions.forEach(action => {
-        consider(action.dueDate, action.title, splitOwnerNames(action.owner).join(', '), action.teamName, action.jira, false);
+        consider(action.dueDate, action.title, splitOwnerNames(action.owner).join(', '), action.teamName, action.jira, false, action.createdAt);
     });
     model.doneActions.forEach(action => {
         const due = parseLocalDate(action.dueDate);
         const done = action.completedAt ? new Date(action.completedAt) : null;
         if (!due || !done || Number.isNaN(done.getTime()) || startOfDay(done) <= startOfDay(due)) return;
-        addRow(action.dueDate, action.title, splitOwnerNames(action.owner).join(', '), action.teamName, action.jira, 'Finished late');
+        addRow(action.dueDate, action.title, splitOwnerNames(action.owner).join(', '), action.teamName, action.jira, 'Finished late', action.createdAt);
     });
     const rank = { Overdue: 0, 'Finished late': 1, Due: 2 };
     return rows.sort((a, b) => (rank[a.kind] - rank[b.kind]) || a.sort - b.sort || a.title.localeCompare(b.title));
@@ -2210,7 +2316,11 @@ function decisionDuePhrase(action) {
 }
 
 function dateRowBits(row) {
-    return [row.owner, row.team, targetPhrase(row.target), jiraPhrase(row.jira)].filter(Boolean);
+    return [row.owner, row.team, targetPhrase(row.target), jiraPhrase(row.jira), row.age].filter(Boolean);
+}
+
+function blockerBits(action) {
+    return [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.teamName, decisionDuePhrase(action), jiraPhrase(action.jira), agePhrase(action.createdAt, 'Blocked since')].filter(Boolean);
 }
 
 function comparisonHtml(model) {
@@ -2219,7 +2329,8 @@ function comparisonHtml(model) {
         const direction = row.change.startsWith('the same') ? 'same' : row.change.includes('more') ? 'up' : 'down';
         return `<div class="compare-card"><span>${escapeHtml(row.label)}</span><strong>${row.current}</strong><p class="${direction}">${escapeHtml(row.change)}</p></div>`;
     }).join('');
-    return `<section class="compare-board"><div class="section-label">Compared with ${escapeHtml(periodLabel)}</div><div class="compare-row">${cards}</div></section>`;
+    const moved = movementLines(model).map(([title, lines]) => `<div class="moved-group"><h4>${escapeHtml(title)}</h4><ul>${lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></div>`).join('');
+    return `<section class="compare-board"><div class="section-label">Compared with ${escapeHtml(periodLabel)}</div><div class="compare-row">${cards}</div><div class="moved-board">${moved}</div></section>`;
 }
 
 function decisionsHtml(model) {
@@ -2229,13 +2340,17 @@ function decisionsHtml(model) {
     const due = dates.filter(row => row.kind === 'Due');
     const blockerItems = blockers.length
         ? blockers.map(action => {
-            const bits = [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.teamName, decisionDuePhrase(action), jiraPhrase(action.jira)].filter(Boolean);
-            return `<li><strong>${escapeHtml(action.title)}</strong> — ${escapeHtml(bits.join(' · '))}</li>`;
+            const ask = actionDetail(action);
+            return `<li><strong>${escapeHtml(action.title)}</strong> — ${escapeHtml(blockerBits(action).join(' · '))}${ask ? `<div class="decision-ask">${escapeHtml(ask)}</div>` : ''}</li>`;
         }).join('')
         : '<li>No blockers are open.</li>';
     const dateItems = dates.length
         ? dates.map(row => `<li><span class="due-kind ${row.kind === 'Due' ? 'due' : 'overdue'}">${escapeHtml(row.kind)}</span> <strong>${escapeHtml(row.title)}</strong> — ${escapeHtml(dateRowBits(row).join(' · '))}</li>`).join('')
         : `<li>No target date is overdue or due this ${escapeHtml(model.periodName || 'week')}.</li>`;
+    const upcoming = comingUpRows(model);
+    const upcomingItems = upcoming.length
+        ? upcoming.map(row => `<li><span class="due-kind ${row.kind === 'Due' ? 'due' : 'overdue'}">${escapeHtml(row.kind)}</span> <strong>${escapeHtml(row.title)}</strong> — ${escapeHtml(dateRowBits(row).join(' · '))}</li>`).join('')
+        : `<li>Nothing is due in the 7 days after this ${escapeHtml(model.periodName || 'week')}.</li>`;
     const clear = !blockers.length && !missed.length
         ? `<p class="fine">Nothing needs a decision. No blocker is open and no target date has been missed.</p>`
         : '';
@@ -2247,6 +2362,9 @@ function decisionsHtml(model) {
         <h4>Due dates</h4>
         <p class="fine">${missed.length ? `${missed.length} missed` : 'No missed dates'}${due.length ? ` · ${due.length} due this ${escapeHtml(model.periodName || 'week')}` : ''}</p>
         <ul>${dateItems}</ul>
+        <h4>Next 7 days</h4>
+        <p class="fine">Due after this ${escapeHtml(model.periodName || 'week')}, and not already listed above.</p>
+        <ul>${upcomingItems}</ul>
     </section>`;
 }
 
@@ -4049,13 +4167,21 @@ function decisionEmailLines(model) {
     lines.push('Blockers');
     if (!blockers.length) lines.push('• No blockers are open.');
     blockers.forEach(action => {
-        const bits = [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.teamName, decisionDuePhrase(action), jiraPhrase(action.jira)].filter(Boolean);
         lines.push(`• ${action.title}`);
-        lines.push(`  ${bits.join(' · ')}`);
+        lines.push(`  ${blockerBits(action).join(' · ')}`);
+        const ask = actionDetail(action);
+        if (ask) lines.push(`  ${ask}`);
     });
     lines.push('Due dates');
     if (!dates.length) lines.push(`• No target date is overdue or due this ${model.periodName || 'week'}.`);
     dates.forEach(row => {
+        lines.push(`• ${row.kind} · ${row.title}`);
+        lines.push(`  ${dateRowBits(row).join(' · ')}`);
+    });
+    const upcoming = comingUpRows(model);
+    lines.push('Next 7 days');
+    if (!upcoming.length) lines.push(`• Nothing is due in the 7 days after this ${model.periodName || 'week'}.`);
+    upcoming.forEach(row => {
         lines.push(`• ${row.kind} · ${row.title}`);
         lines.push(`  ${dateRowBits(row).join(' · ')}`);
     });
@@ -4066,6 +4192,11 @@ function comparisonEmailLines(model) {
     const lines = [`COMPARED WITH ${previousPeriodLabel(model).toUpperCase()}`];
     comparisonRows(model).forEach(row => {
         lines.push(`${row.label}: ${row.current} ${row.noun}, ${row.change}`);
+    });
+    lines.push('', 'WHAT MOVED');
+    movementLines(model).forEach(([title, items]) => {
+        lines.push(title);
+        items.forEach(item => lines.push(`• ${item}`));
     });
     return lines;
 }
