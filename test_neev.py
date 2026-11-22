@@ -71,6 +71,18 @@ class NeevConfigTest(unittest.TestCase):
                 "NEEV_INSECURE_SKIP_VERIFY": "false",
             })
             self.assertFalse(explicit["insecure"])
+            mac = Path("/tmp/neev-mac.env")
+            mac.write_bytes(b"# saved on mac \x9c\nNEEV_CHAT_API_KEY=real-key\n")
+            wide = Path("/tmp/neev-wide.env")
+            wide.write_bytes("NEEV_CHAT_API_KEY=wide-key\n".encode("utf-16"))
+            try:
+                mac_config = neev.load_config(env_file=mac)
+                wide_config = neev.load_config(env_file=wide)
+            finally:
+                mac.unlink(missing_ok=True)
+                wide.unlink(missing_ok=True)
+            self.assertEqual(mac_config["chat_key"], "real-key")
+            self.assertEqual(wide_config["chat_key"], "wide-key")
         finally:
             path.unlink(missing_ok=True)
             os.environ.update(saved)

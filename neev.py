@@ -83,12 +83,26 @@ def _duration(value, default):
         raise NeevError("Neev timeout or interval is not a number") from error
 
 
+def _decode_env_bytes(data):
+    """TextEdit on Mac often saves neev.env as Mac Roman or UTF-16, not UTF-8."""
+    if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff"):
+        return data.decode("utf-16")
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    for encoding in ("utf-8", "cp1252", "mac_roman"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1")
+
+
 def _read_env_file(path):
     values = {}
     file_path = Path(path)
     if not file_path.is_file():
         return values
-    for raw_line in file_path.read_text(encoding="utf-8").splitlines():
+    for raw_line in _decode_env_bytes(file_path.read_bytes()).splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -139,9 +153,16 @@ def load_config(env=None, env_file=None):
         "embed_model": str(source.get("NEEV_EMBED_MODEL", "")).strip() or "BAAI/bge-m3",
         "usecase": str(source.get("NEEV_USECASE_ID", "")).strip() or DEV_USECASE,
         "insecure": insecure,
-        "timeout": _duration(source.get("NEEV_TIMEOUT"), 60),
-        "min_interval": _duration(source.get("NEEV_MIN_INTERVAL"), 7),
+        "timeout": _duration_or(source.get("NEEV_TIMEOUT"), 60),
+        "min_interval": _duration_or(source.get("NEEV_MIN_INTERVAL"), 7),
     }
+
+
+def _duration_or(value, default):
+    try:
+        return _duration(value, default)
+    except NeevError:
+        return default
 
 
 def chat_configured(config):

@@ -37,9 +37,16 @@ _CLIENT = None
 _CLIENT_STAMP = None
 
 
+def safe_config():
+    try:
+        return load_config()
+    except Exception as error:
+        raise NeevError("neev.env could not be read. Save it as plain text, then click Ask again.") from error
+
+
 def neev_client():
     global _CLIENT, _CLIENT_STAMP
-    config = load_config()
+    config = safe_config()
     stamp = tuple(sorted((key, repr(value)) for key, value in config.items()))
     with _CLIENT_LOCK:
         if _CLIENT is None or stamp != _CLIENT_STAMP:
@@ -59,7 +66,11 @@ class TrackerHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/api/ai/status":
-            config = load_config()
+            try:
+                config = safe_config()
+            except NeevError as error:
+                self.send_json(200, {"chat": False, "embed": False, "reason": str(error)})
+                return
             reason = ""
             if not config.get("chat_key"):
                 reason = "Add NEEV_CHAT_API_KEY to neev.env in the app folder, then click Ask again."

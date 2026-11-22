@@ -2882,7 +2882,7 @@ async function postAi(path, payload) {
         });
     } catch (error) {
         const failure = new Error('offline');
-        failure.reason = 'The tracker server is not running. Start it with the Mac or Windows script, then try again.';
+        failure.reason = 'The assistant request did not finish. Leave the tracker window open and click Ask again.';
         throw failure;
     }
     let body = {};
