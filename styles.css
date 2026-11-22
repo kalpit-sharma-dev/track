@@ -119,6 +119,7 @@
 [data-theme="dark"] .filter-bar input,
 [data-theme="dark"] .filter-bar select,
 [data-theme="dark"] .header-actions input,
+[data-theme="dark"] .header-actions .team-picker-button,
 [data-theme="dark"] .header-actions select,
 [data-theme="dark"] .styled-select,
 [data-theme="dark"] .global-search input,
@@ -132,10 +133,16 @@
 [data-theme="dark"] .form-group select,
 [data-theme="dark"] .filter-bar select,
 [data-theme="dark"] .header-actions select,
+[data-theme="dark"] .header-actions .team-picker-button,
 [data-theme="dark"] .styled-select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23CBD5E1' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 14px center;
+}
+
+[data-theme="dark"] .team-picker-menu {
+    background: var(--bg-secondary);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="dark"] .action-card.priority-high {
@@ -624,6 +631,7 @@ html {
 
 .header-actions select,
 .header-actions input,
+.header-actions .team-picker-button,
 .styled-select {
     padding: 12px 40px 12px 16px;
     border: 2px solid var(--border-color);
@@ -650,8 +658,66 @@ html {
     width: 108px;
 }
 
-.header-actions select.report-team {
-    min-width: 160px;
+.team-picker {
+    position: relative;
+}
+
+.team-picker-button {
+    min-width: 180px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.team-picker-menu {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 220px;
+    max-height: 280px;
+    overflow: auto;
+    padding: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
+
+.team-picker-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.team-picker-option:hover {
+    background: var(--bg-tertiary);
+}
+
+.team-picker-option.all {
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+
+.header-actions .team-picker-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    appearance: auto;
+    background: none;
+    background-image: none;
+    cursor: pointer;
+    flex: 0 0 auto;
 }
 
 .header-actions input.ask-input {

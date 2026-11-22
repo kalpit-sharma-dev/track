@@ -610,12 +610,12 @@ function formatDate(date, format = 'long') {
 
 // Populate team dropdowns
 function populateTeamDropdowns() {
-    const dropdowns = ['updateTeam', 'actionTeam', 'filterTeam', 'filterActionTeam', 'reportTeamWeek', 'reportTeamMonth', 'reportTeamQuarter', 'reportTeamYear'];
+    const dropdowns = ['updateTeam', 'actionTeam', 'filterTeam', 'filterActionTeam'];
     dropdowns.forEach(id => {
         const dropdown = document.getElementById(id);
         if (dropdown) {
             const currentValue = dropdown.value;
-            const isFilter = id.startsWith('filter') || id.startsWith('reportTeam');
+            const isFilter = id.startsWith('filter');
             dropdown.innerHTML = isFilter ? '<option value="">All Teams</option>' : '<option value="">Select Team</option>';
             appData.teams.forEach(team => {
                 dropdown.innerHTML += `<option value="${team.id}">${escapeHtml(team.name)}</option>`;
@@ -635,6 +635,7 @@ function populateTeamDropdowns() {
         });
         if (owners.includes(currentOwner)) ownerFilter.value = currentOwner;
     }
+    populateReportTeamPickers();
 }
 
 function splitOwnerNames(value) {
@@ -1780,7 +1781,10 @@ function bucketByTeam(model) {
     const carried = model.carried || [];
     const showcase = model.showcase || [];
     const hasWork = pack => pack.updates.length || pack.carried.length || pack.showcase.length || pack.open.length || pack.done.length;
-    const packs = appData.teams.map(team => ({
+    const teams = model.teamIds
+        ? appData.teams.filter(team => model.teamIds.includes(team.id))
+        : appData.teams;
+    const packs = teams.map(team => ({
         team,
         updates: model.updates.filter(update => update.teamId === team.id),
         carried: carried.filter(update => update.teamId === team.id),
@@ -2131,7 +2135,7 @@ function reportCounts(model) {
 function previousReportCounts(model) {
     const range = previousPeriodRange(model);
     const previous = collectWeeklyModel(range.start, range.end);
-    if (model.teamId) filterModelToTeam(previous, model.teamId);
+    if (model.teamIds) filterModelToTeams(previous, model.teamIds);
     return reportCounts(previous);
 }
 
@@ -2300,7 +2304,7 @@ function renderWeeklyHtml(model) {
                 ${railHtml(timelineBuckets(model.updates, model, update => update.date), '#4F46E5')}
             </section>
             ${peopleBoard}
-            ${cards || (!loose && !quiet ? `<p class="empty-state">${model.teamName ? `${escapeHtml(model.teamName)} had no notes or open work in this ${escapeHtml(model.periodName || 'week')}.` : `No team had notes or open work in this ${escapeHtml(model.periodName || 'week')}.`}</p>` : '')}
+            ${cards || (!loose && !quiet ? `<p class="empty-state">${model.teamIds ? `The selected teams had no notes or open work in this ${escapeHtml(model.periodName || 'week')}.` : `No team had notes or open work in this ${escapeHtml(model.periodName || 'week')}.`}</p>` : '')}
             ${loose}
             ${quiet}
             <p class="report-foot">Prepared from the daily tracker · ${escapeHtml(new Date().toLocaleString())}</p>
@@ -2388,25 +2392,115 @@ const REPORT_TEAM_FIELDS = {
     year: 'reportTeamYear'
 };
 
-function reportTeamId(period) {
-    return document.getElementById(REPORT_TEAM_FIELDS[period])?.value || '';
+function bindReportTeamPickers() {
+    if (bindReportTeamPickers.done) return;
+    bindReportTeamPickers.done = true;
+    document.addEventListener('click', event => {
+        const button = event.target.closest('.team-picker-button');
+        if (button) {
+            const picker = button.closest('.team-picker');
+            const wasOpen = picker.classList.contains('open');
+            document.querySelectorAll('.team-picker.open').forEach(closeTeamPicker);
+            if (!wasOpen) openTeamPicker(picker);
+            return;
+        }
+        document.querySelectorAll('.team-picker.open').forEach(picker => {
+            if (!picker.contains(event.target)) closeTeamPicker(picker);
+        });
+    });
+    document.addEventListener('change', event => {
+        const box = event.target;
+        if (!box.matches || !box.matches('.team-picker input[type="checkbox"]')) return;
+        const picker = box.closest('.team-picker');
+        const teamBoxes = [...picker.querySelectorAll('input[type="checkbox"][value]')];
+        const all = picker.querySelector('input[data-all]');
+        if (box.hasAttribute('data-all')) teamBoxes.forEach(item => { item.checked = box.checked; });
+        else if (all) all.checked = teamBoxes.length > 0 && teamBoxes.every(item => item.checked);
+        updateTeamPickerLabel(picker);
+        generatePeriodReport(picker.dataset.period);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') document.querySelectorAll('.team-picker.open').forEach(closeTeamPicker);
+    });
 }
 
-function filterModelToTeam(model, teamId) {
-    if (!teamId) return model;
-    const team = appData.teams.find(item => item.id === teamId);
-    const keep = item => item.teamId === teamId;
+function openTeamPicker(picker) {
+    picker.classList.add('open');
+    const menu = picker.querySelector('.team-picker-menu');
+    if (menu) menu.hidden = false;
+    const button = picker.querySelector('.team-picker-button');
+    if (button) button.setAttribute('aria-expanded', 'true');
+}
+
+function closeTeamPicker(picker) {
+    picker.classList.remove('open');
+    const menu = picker.querySelector('.team-picker-menu');
+    if (menu) menu.hidden = true;
+    const button = picker.querySelector('.team-picker-button');
+    if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function updateTeamPickerLabel(picker) {
+    const boxes = [...picker.querySelectorAll('input[type="checkbox"][value]')];
+    const checked = boxes.filter(box => box.checked);
+    const button = picker.querySelector('.team-picker-button');
+    if (!button) return;
+    const names = checked.map(box => box.parentElement.textContent.trim());
+    let label = 'All teams';
+    if (boxes.length && !checked.length) label = 'No teams';
+    else if (checked.length && checked.length < boxes.length) label = names.join(', ');
+    button.textContent = label;
+    button.title = names.length && names.length < boxes.length ? names.join(', ') : 'Checked teams are included in this report';
+}
+
+function populateReportTeamPickers() {
+    bindReportTeamPickers();
+    document.querySelectorAll('.team-picker').forEach(picker => {
+        const menu = picker.querySelector('.team-picker-menu');
+        if (!menu) return;
+        const existing = [...picker.querySelectorAll('input[type="checkbox"][value]')];
+        const previous = new Set(existing.filter(box => box.checked).map(box => box.value));
+        const allWereChecked = !existing.length || existing.every(box => box.checked);
+        const options = ['<label class="team-picker-option all"><input type="checkbox" data-all="true"> All teams</label>'];
+        appData.teams.forEach(team => {
+            const checked = allWereChecked || previous.has(team.id);
+            options.push(`<label class="team-picker-option"><input type="checkbox" value="${escapeHtml(team.id)}"${checked ? ' checked' : ''}> ${escapeHtml(team.name)}</label>`);
+        });
+        menu.innerHTML = options.join('');
+        const boxes = [...menu.querySelectorAll('input[type="checkbox"][value]')];
+        const all = menu.querySelector('input[data-all]');
+        if (all) all.checked = boxes.length > 0 && boxes.every(box => box.checked);
+        updateTeamPickerLabel(picker);
+    });
+}
+
+function reportTeamSelection(period) {
+    const root = document.getElementById(REPORT_TEAM_FIELDS[period]);
+    if (!root) return null;
+    const boxes = [...root.querySelectorAll('input[type="checkbox"][value]')];
+    if (!boxes.length) return null;
+    const checked = boxes.filter(box => box.checked).map(box => box.value);
+    if (checked.length === boxes.length) return null;
+    return checked;
+}
+
+function filterModelToTeams(model, teamIds) {
+    if (!teamIds) return model;
+    const allowed = new Set(teamIds);
+    const names = appData.teams.filter(team => allowed.has(team.id)).map(team => team.name);
+    const keep = item => allowed.has(item.teamId);
     model.updates = model.updates.filter(keep);
     model.carried = (model.carried || []).filter(keep);
     model.showcase = (model.showcase || []).filter(keep);
     model.openActions = model.openActions.filter(keep);
     model.doneActions = model.doneActions.filter(keep);
-    model.teamId = teamId;
-    model.teamName = team ? team.name : '';
-    if (model.teamName) {
-        model.label = `${model.teamName} · ${model.label}`;
-        const slug = model.teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        model.fileKey = `${model.fileKey}-${slug || 'team'}`;
+    model.teamIds = names.length ? appData.teams.filter(team => allowed.has(team.id)).map(team => team.id) : [];
+    model.teamName = names.length === 1 ? names[0] : '';
+    if (names.length) {
+        const shown = names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} + ${names.length - 2}`;
+        model.label = `${shown} · ${model.label}`;
+        const slug = names.map(name => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean).join('-') || 'teams';
+        model.fileKey = `${model.fileKey}-${slug}`.slice(0, 120);
     }
     return model;
 }
@@ -2420,12 +2514,15 @@ function generatePeriodReport(period) {
     const host = view && document.getElementById(view.hostId);
     if (!host) return;
     const spec = readPeriod(period);
-    if (!spec) {
+    const selection = reportTeamSelection(period);
+    if (!spec || (selection && !selection.length)) {
         if (latestReportModel && latestReportModel.period === period) {
             latestReportModel = null;
             latestWeeklyModel = null;
         }
-        host.innerHTML = `<p class="empty-state">Choose a ${view.choice} to build the management update.</p>`;
+        host.innerHTML = spec
+            ? '<p class="empty-state">Choose at least one team. Checked teams are the ones included in this report.</p>'
+            : `<p class="empty-state">Choose a ${view.choice} to build the management update.</p>`;
         return;
     }
     const model = collectWeeklyModel(spec.start, spec.end);
@@ -2434,7 +2531,7 @@ function generatePeriodReport(period) {
     model.period = period;
     model.periodName = spec.periodName;
     model.fileKey = spec.fileKey;
-    filterModelToTeam(model, reportTeamId(period));
+    filterModelToTeams(model, selection);
     latestReportModel = model;
     latestWeeklyModel = model;
     host.innerHTML = renderWeeklyHtml(model);

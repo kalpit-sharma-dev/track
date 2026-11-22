@@ -400,9 +400,10 @@
                     <h2>Weekly Report</h2>
                     <div class="header-actions">
                         <input type="week" id="weekSelector" onchange="generateWeeklyReport()">
-                        <select id="reportTeamWeek" class="report-team" title="Limit this report to one team" onchange="generateWeeklyReport()">
-                            <option value="">All teams</option>
-                        </select>
+                        <div class="team-picker" id="reportTeamWeek" data-period="week">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
                         <input type="text" class="ask-input" id="askWeek" placeholder="Ask this week" onkeydown="if (event.key === 'Enter') askReport('week')">
                         <button type="button" class="btn btn-secondary" onclick="askReport('week')">Ask</button>
                         <button type="button" class="btn btn-secondary" id="copyAskWeek" onclick="copyAskAnswer('week')" disabled>Copy answer</button>
@@ -422,9 +423,10 @@
                     <h2>Monthly Report</h2>
                     <div class="header-actions">
                         <input type="month" id="monthSelector" onchange="generatePeriodReport('month')">
-                        <select id="reportTeamMonth" class="report-team" title="Limit this report to one team" onchange="generatePeriodReport('month')">
-                            <option value="">All teams</option>
-                        </select>
+                        <div class="team-picker" id="reportTeamMonth" data-period="month">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
                         <input type="text" class="ask-input" id="askMonth" placeholder="Ask this month" onkeydown="if (event.key === 'Enter') askReport('month')">
                         <button type="button" class="btn btn-secondary" onclick="askReport('month')">Ask</button>
                         <button type="button" class="btn btn-secondary" id="copyAskMonth" onclick="copyAskAnswer('month')" disabled>Copy answer</button>
@@ -449,9 +451,10 @@
                             <option value="3">Q3 · Jul–Sep</option>
                             <option value="4">Q4 · Oct–Dec</option>
                         </select>
-                        <select id="reportTeamQuarter" class="report-team" title="Limit this report to one team" onchange="generatePeriodReport('quarter')">
-                            <option value="">All teams</option>
-                        </select>
+                        <div class="team-picker" id="reportTeamQuarter" data-period="quarter">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
                         <input type="text" class="ask-input" id="askQuarter" placeholder="Ask this quarter" onkeydown="if (event.key === 'Enter') askReport('quarter')">
                         <button type="button" class="btn btn-secondary" onclick="askReport('quarter')">Ask</button>
                         <button type="button" class="btn btn-secondary" id="copyAskQuarter" onclick="copyAskAnswer('quarter')" disabled>Copy answer</button>
@@ -470,9 +473,10 @@
                     <h2>Yearly Report</h2>
                     <div class="header-actions">
                         <input type="number" id="yearSelector" min="2000" max="2100" title="Financial year starting 1 April. 2026 means 1 Apr 2026 to 31 Mar 2027." onchange="generatePeriodReport('year')">
-                        <select id="reportTeamYear" class="report-team" title="Limit this report to one team" onchange="generatePeriodReport('year')">
-                            <option value="">All teams</option>
-                        </select>
+                        <div class="team-picker" id="reportTeamYear" data-period="year">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
                         <input type="text" class="ask-input" id="askYear" placeholder="Ask this year" onkeydown="if (event.key === 'Enter') askReport('year')">
                         <button type="button" class="btn btn-secondary" onclick="askReport('year')">Ask</button>
                         <button type="button" class="btn btn-secondary" id="copyAskYear" onclick="copyAskAnswer('year')" disabled>Copy answer</button>
