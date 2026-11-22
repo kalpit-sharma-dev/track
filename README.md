@@ -236,6 +236,8 @@ Weekly, monthly, quarterly, and yearly reports use the same layout.
    - The target date, Jira number, and status on each note, task, and team that has one
    - A timeline for the period: days for a week or month, weeks for a quarter, and months for a financial year. The year runs from 1 April to 31 March. 2026 means 1 Apr 2026 through 31 Mar 2027.
    - A team dropdown on each report. All teams is the full update. One team limits the screen, the email copy, the PDF, and Ask to that team.
+   - Decisions at the top: blockers, missed target dates, and dates that fall in the period, with the owner and Jira number
+   - Notes, finished tasks, and blockers compared with the previous week, month, quarter, or year
    - Blockers that need attention
    - Teams with no movement in that period
    - A week, month, quarter, or year with no new note still shows work that is still in progress, and otherwise the latest saved update for each team, so the report is not empty

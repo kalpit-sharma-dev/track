@@ -1544,6 +1544,86 @@ html {
     color: #7F1D1D;
 }
 
+.decision-board,
+.compare-board {
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 16px 18px;
+    background: var(--bg-secondary);
+}
+
+.decision-board {
+    background: #FEF2F2;
+    border-color: #FECACA;
+}
+
+.decision-board h4 {
+    margin: 12px 0 6px;
+}
+
+.decision-board ul {
+    margin-left: 18px;
+}
+
+.decision-board li {
+    margin: 4px 0;
+    color: var(--text-primary);
+}
+
+.due-kind {
+    display: inline-block;
+    margin-right: 4px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.due-kind.overdue {
+    color: #7F1D1D;
+    background: #FECACA;
+}
+
+.due-kind.due {
+    color: #9A3412;
+    background: #FFEDD5;
+}
+
+.compare-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.compare-card {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+
+.compare-card span {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 800;
+}
+
+.compare-card strong {
+    display: block;
+    margin: 4px 0 2px;
+    font-size: 1.4rem;
+    color: var(--heading);
+}
+
+.compare-card p {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
 .team-brief {
     border: 1px solid var(--border-color);
     border-radius: 16px;
@@ -1800,6 +1880,21 @@ html {
 
 [data-theme="dark"] .mgmt-callout li {
     color: #FECACA;
+}
+
+[data-theme="dark"] .decision-board {
+    background: #3F1D1D;
+    border-color: #7F1D1D;
+}
+
+[data-theme="dark"] .due-kind.overdue {
+    color: #FECACA;
+    background: #7F1D1D;
+}
+
+[data-theme="dark"] .due-kind.due {
+    color: #FDBA74;
+    background: #7C2D12;
 }
 
 .report-section {
@@ -2258,7 +2353,8 @@ form {
     
     .report-stats,
     .mgmt-stats,
-    .insight-row {
+    .insight-row,
+    .compare-row {
         grid-template-columns: repeat(2, 1fr);
     }
 
@@ -2852,7 +2948,8 @@ form {
         grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
     }
 
-    .insight-row {
+    .insight-row,
+    .compare-row {
         grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     }
 

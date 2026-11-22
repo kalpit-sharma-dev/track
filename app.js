@@ -2098,6 +2098,154 @@ function teamCardHtml(pack, model, color, title, subtitle) {
     </article>`;
 }
 
+function previousPeriodRange(model) {
+    const start = startOfDay(model.weekStart);
+    if (model.period === 'month') {
+        const prevStart = new Date(start.getFullYear(), start.getMonth() - 1, 1);
+        return { start: prevStart, end: endOfDay(new Date(start.getFullYear(), start.getMonth(), 0)) };
+    }
+    if (model.period === 'quarter') {
+        const prevStart = new Date(start.getFullYear(), start.getMonth() - 3, 1);
+        return { start: prevStart, end: endOfDay(new Date(start.getFullYear(), start.getMonth(), 0)) };
+    }
+    if (model.period === 'year') {
+        const prevStart = new Date(start.getFullYear() - 1, 3, 1);
+        return { start: prevStart, end: endOfDay(new Date(start.getFullYear(), 3, 0)) };
+    }
+    const prevStart = addDays(start, -7);
+    return { start: prevStart, end: endOfDay(addDays(prevStart, 6)) };
+}
+
+function previousPeriodLabel(model) {
+    return { week: 'last week', month: 'last month', quarter: 'last quarter', year: 'last year' }[model.period] || 'the previous period';
+}
+
+function reportCounts(model) {
+    return {
+        notes: model.updates.length,
+        finished: model.doneActions.length,
+        blockers: model.openActions.filter(action => action.status === 'blocked').length
+    };
+}
+
+function previousReportCounts(model) {
+    const range = previousPeriodRange(model);
+    const previous = collectWeeklyModel(range.start, range.end);
+    if (model.teamId) filterModelToTeam(previous, model.teamId);
+    return reportCounts(previous);
+}
+
+function compareChange(current, previous, periodLabel) {
+    const gap = current - previous;
+    if (gap === 0) return `the same as ${periodLabel}`;
+    if (gap > 0) return `${gap} more than ${periodLabel}`;
+    return `${Math.abs(gap)} fewer than ${periodLabel}`;
+}
+
+function comparisonRows(model) {
+    const current = reportCounts(model);
+    const previous = previousReportCounts(model);
+    const periodLabel = previousPeriodLabel(model);
+    return [
+        { label: 'Notes', current: current.notes, previous: previous.notes, noun: current.notes === 1 ? 'note' : 'notes', change: compareChange(current.notes, previous.notes, periodLabel) },
+        { label: 'Finished', current: current.finished, previous: previous.finished, noun: current.finished === 1 ? 'task' : 'tasks', change: compareChange(current.finished, previous.finished, periodLabel) },
+        { label: 'Blockers', current: current.blockers, previous: previous.blockers, noun: current.blockers === 1 ? 'blocker' : 'blockers', change: compareChange(current.blockers, previous.blockers, periodLabel) }
+    ];
+}
+
+function targetInReport(value, model) {
+    const date = parseLocalDate(value);
+    if (!date) return false;
+    return startOfDay(date) >= startOfDay(model.weekStart) && startOfDay(date) <= startOfDay(model.weekEnd);
+}
+
+function reportDateRows(model) {
+    const today = startOfDay(new Date());
+    const rows = [];
+    const addRow = (target, title, owner, team, jira, kind) => {
+        if (!target) return;
+        rows.push({
+            kind,
+            title: title || 'Untitled',
+            owner: owner || 'No owner',
+            team: team || '',
+            jira: jira || '',
+            target,
+            sort: startOfDay(parseLocalDate(target) || today).getTime()
+        });
+    };
+    const consider = (target, title, owner, team, jira, completed) => {
+        const date = parseLocalDate(target);
+        if (!date || completed) return;
+        const overdue = startOfDay(date) < today;
+        const dueNow = targetInReport(target, model);
+        if (!overdue && !dueNow) return;
+        addRow(target, title, owner, team, jira, overdue ? 'Overdue' : 'Due');
+    };
+    [...model.updates, ...(model.carried || [])].forEach(update => {
+        consider(update.targetDate, update.description, splitOwnerNames(update.people).join(', '), update.teamName, update.jira, update.status === 'completed');
+    });
+    model.openActions.forEach(action => {
+        consider(action.dueDate, action.title, splitOwnerNames(action.owner).join(', '), action.teamName, action.jira, false);
+    });
+    model.doneActions.forEach(action => {
+        const due = parseLocalDate(action.dueDate);
+        const done = action.completedAt ? new Date(action.completedAt) : null;
+        if (!due || !done || Number.isNaN(done.getTime()) || startOfDay(done) <= startOfDay(due)) return;
+        addRow(action.dueDate, action.title, splitOwnerNames(action.owner).join(', '), action.teamName, action.jira, 'Finished late');
+    });
+    const rank = { Overdue: 0, 'Finished late': 1, Due: 2 };
+    return rows.sort((a, b) => (rank[a.kind] - rank[b.kind]) || a.sort - b.sort || a.title.localeCompare(b.title));
+}
+
+function decisionDuePhrase(action) {
+    if (!action.dueDate) return '';
+    const due = parseLocalDate(action.dueDate);
+    const missed = due && startOfDay(due) < startOfDay(new Date());
+    return `${targetPhrase(action.dueDate)}${missed ? ', missed' : ''}`;
+}
+
+function dateRowBits(row) {
+    return [row.owner, row.team, targetPhrase(row.target), jiraPhrase(row.jira)].filter(Boolean);
+}
+
+function comparisonHtml(model) {
+    const periodLabel = previousPeriodLabel(model);
+    const cards = comparisonRows(model).map(row => {
+        const direction = row.change.startsWith('the same') ? 'same' : row.change.includes('more') ? 'up' : 'down';
+        return `<div class="compare-card"><span>${escapeHtml(row.label)}</span><strong>${row.current}</strong><p class="${direction}">${escapeHtml(row.change)}</p></div>`;
+    }).join('');
+    return `<section class="compare-board"><div class="section-label">Compared with ${escapeHtml(periodLabel)}</div><div class="compare-row">${cards}</div></section>`;
+}
+
+function decisionsHtml(model) {
+    const blockers = model.openActions.filter(action => action.status === 'blocked');
+    const dates = reportDateRows(model);
+    const missed = dates.filter(row => row.kind === 'Overdue' || row.kind === 'Finished late');
+    const due = dates.filter(row => row.kind === 'Due');
+    const blockerItems = blockers.length
+        ? blockers.map(action => {
+            const bits = [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.teamName, decisionDuePhrase(action), jiraPhrase(action.jira)].filter(Boolean);
+            return `<li><strong>${escapeHtml(action.title)}</strong> — ${escapeHtml(bits.join(' · '))}</li>`;
+        }).join('')
+        : '<li>No blockers are open.</li>';
+    const dateItems = dates.length
+        ? dates.map(row => `<li><span class="due-kind ${row.kind === 'Due' ? 'due' : 'overdue'}">${escapeHtml(row.kind)}</span> <strong>${escapeHtml(row.title)}</strong> — ${escapeHtml(dateRowBits(row).join(' · '))}</li>`).join('')
+        : `<li>No target date is overdue or due this ${escapeHtml(model.periodName || 'week')}.</li>`;
+    const clear = !blockers.length && !missed.length
+        ? `<p class="fine">Nothing needs a decision. No blocker is open and no target date has been missed.</p>`
+        : '';
+    return `<section class="decision-board">
+        <div class="section-label">Decisions</div>
+        ${clear}
+        <h4>Blockers</h4>
+        <ul>${blockerItems}</ul>
+        <h4>Due dates</h4>
+        <p class="fine">${missed.length ? `${missed.length} missed` : 'No missed dates'}${due.length ? ` · ${due.length} due this ${escapeHtml(model.periodName || 'week')}` : ''}</p>
+        <ul>${dateItems}</ul>
+    </section>`;
+}
+
 function renderWeeklyHtml(model) {
     const buckets = bucketByTeam(model);
     const people = peopleThisWeek(model);
@@ -2124,10 +2272,6 @@ function renderWeeklyHtml(model) {
     const quiet = quietNames.length
         ? `<div class="quiet-teams"><div class="section-label">Quiet this ${escapeHtml(model.periodName || 'week')}</div><p>${escapeHtml(joinNames(quietNames))} had no notes and no open work in this ${escapeHtml(model.periodName || 'week')}.</p></div>`
         : '';
-    const attention = blockers.length ? `<section class="mgmt-callout"><h4>Needs attention</h4><ul>${blockers.map(action => {
-        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), jiraPhrase(action.jira), actionDetail(action)].filter(Boolean);
-        return `<li><strong>${escapeHtml(action.title)}</strong> — ${escapeHtml(bits.join(' · '))}</li>`;
-    }).join('')}</ul></section>` : '';
     const peopleBoard = people.length ? `<section class="people-board"><div class="section-label">Who was involved</div><div class="people-chips">${people.map(person => {
         const otherOpen = person.open - person.blocked;
         const bits = [];
@@ -2146,6 +2290,8 @@ function renderWeeklyHtml(model) {
         </div>
         <div class="mgmt-stats">${stats.map(([value, label]) => `<div class="mgmt-stat"><strong>${value}</strong><span>${label}</span></div>`).join('')}</div>
         <div class="mgmt-body">
+            ${decisionsHtml(model)}
+            ${comparisonHtml(model)}
             <div class="insight-row">${insightTiles(model, buckets, people).map(tile => `
                 <div class="insight-tile"><span>${escapeHtml(tile.kicker)}</span><strong>${escapeHtml(tile.title)}</strong><p>${escapeHtml(tile.detail)}</p></div>
             `).join('')}</div>
@@ -2153,7 +2299,6 @@ function renderWeeklyHtml(model) {
                 <div class="section-label">When the work happened</div>
                 ${railHtml(timelineBuckets(model.updates, model, update => update.date), '#4F46E5')}
             </section>
-            ${attention}
             ${peopleBoard}
             ${cards || (!loose && !quiet ? `<p class="empty-state">${model.teamName ? `${escapeHtml(model.teamName)} had no notes or open work in this ${escapeHtml(model.periodName || 'week')}.` : `No team had notes or open work in this ${escapeHtml(model.periodName || 'week')}.`}</p>` : '')}
             ${loose}
@@ -3796,6 +3941,38 @@ function emailTeamSection(title, subtitle, pack, model) {
     return lines.join('\n');
 }
 
+function decisionEmailLines(model) {
+    const blockers = model.openActions.filter(action => action.status === 'blocked');
+    const dates = reportDateRows(model);
+    const missed = dates.filter(row => row.kind !== 'Due');
+    const lines = ['DECISIONS'];
+    if (!blockers.length && !missed.length) {
+        lines.push('Nothing needs a decision. No blocker is open and no target date has been missed.');
+    }
+    lines.push('Blockers');
+    if (!blockers.length) lines.push('• No blockers are open.');
+    blockers.forEach(action => {
+        const bits = [splitOwnerNames(action.owner).join(', ') || 'Unassigned', action.teamName, decisionDuePhrase(action), jiraPhrase(action.jira)].filter(Boolean);
+        lines.push(`• ${action.title}`);
+        lines.push(`  ${bits.join(' · ')}`);
+    });
+    lines.push('Due dates');
+    if (!dates.length) lines.push(`• No target date is overdue or due this ${model.periodName || 'week'}.`);
+    dates.forEach(row => {
+        lines.push(`• ${row.kind} · ${row.title}`);
+        lines.push(`  ${dateRowBits(row).join(' · ')}`);
+    });
+    return lines;
+}
+
+function comparisonEmailLines(model) {
+    const lines = [`COMPARED WITH ${previousPeriodLabel(model).toUpperCase()}`];
+    comparisonRows(model).forEach(row => {
+        lines.push(`${row.label}: ${row.current} ${row.noun}, ${row.change}`);
+    });
+    return lines;
+}
+
 function buildWeeklyEmail(model) {
     const buckets = bucketByTeam(model);
     const people = peopleThisWeek(model);
@@ -3810,6 +3987,8 @@ function buildWeeklyEmail(model) {
         '',
         managementLead(model, buckets, people),
         '',
+        ...decisionEmailLines(model),
+        '',
         'SNAPSHOT',
         `Notes: ${model.updates.length}`,
         `Finished: ${model.doneActions.length}`,
@@ -3817,6 +3996,8 @@ function buildWeeklyEmail(model) {
         `Blockers: ${blockers.length}`,
         `Meetings: ${meetings}`,
         `PR reviews: ${reviews}`,
+        '',
+        ...comparisonEmailLines(model),
         '',
         `THIS ${(model.periodName || 'week').toUpperCase()} AT A GLANCE`
     ];
@@ -3827,13 +4008,6 @@ function buildWeeklyEmail(model) {
     lines.push('', 'WHEN THE WORK HAPPENED');
     timelineBuckets(model.updates, model, update => update.date).forEach(day => {
         lines.push(`${day.caption}: ${day.count}`);
-    });
-    lines.push('', 'NEEDS ATTENTION');
-    if (!blockers.length) lines.push('• No blockers are open.');
-    blockers.forEach(action => {
-        const bits = [action.owner || 'Unassigned', action.teamName, duePhrase(action, model.weekEnd), jiraPhrase(action.jira), actionDetail(action)].filter(Boolean);
-        lines.push(`• ${action.title}`);
-        lines.push(`  ${bits.join(' · ')}`);
     });
     lines.push('', 'WHO WAS INVOLVED');
     if (!people.length) lines.push('• No people were named.');
