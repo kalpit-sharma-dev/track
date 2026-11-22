@@ -7,13 +7,43 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from neev import (
+    ASK_SYSTEM,
+    FILE_NOTE_SYSTEM,
+    NeevError,
+    PARSE_SYSTEM,
+    chat_configured,
+    embed_configured,
+    extract_json,
+    load_config,
+    NeevClient,
+    sanitize_filed_note,
+    sanitize_import,
+)
+
 ROOT = Path(__file__).resolve().parent
 DATA_FILE = ROOT / "tracker-data.json"
 TEMP_FILE = ROOT / "tracker-data.json.tmp"
+EMBED_FILE = ROOT / "tracker-embeddings.json"
+_CLIENT_LOCK = threading.Lock()
+_CLIENT = None
+_CLIENT_STAMP = None
+
+
+def neev_client():
+    global _CLIENT, _CLIENT_STAMP
+    config = load_config()
+    stamp = tuple(sorted((key, repr(value)) for key, value in config.items()))
+    with _CLIENT_LOCK:
+        if _CLIENT is None or stamp != _CLIENT_STAMP:
+            globals()["_CLIENT"] = NeevClient(config)
+            globals()["_CLIENT_STAMP"] = stamp
+        return _CLIENT
 
 
 class TrackerHandler(SimpleHTTPRequestHandler):
@@ -25,7 +55,16 @@ class TrackerHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        if self.path.split("?", 1)[0] != "/api/data":
+        path = self.path.split("?", 1)[0]
+        if path == "/api/ai/status":
+            config = load_config()
+            self.send_json(200, {"chat": chat_configured(config), "embed": embed_configured(config)})
+            return
+        if path == "/api/embeddings":
+            body = EMBED_FILE.read_bytes() if EMBED_FILE.exists() else b'{"vectors":{}}'
+            self.send_bytes(200, body, "application/json; charset=utf-8")
+            return
+        if path != "/api/data":
             return super().do_GET()
         if not DATA_FILE.exists():
             self.send_response(204)
@@ -42,6 +81,21 @@ class TrackerHandler(SimpleHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/api/report.pdf":
             self.export_report_pdf()
+            return
+        if path == "/api/ai/ask":
+            self.ai_ask()
+            return
+        if path == "/api/ai/file-note":
+            self.ai_file_note()
+            return
+        if path == "/api/ai/parse-notes":
+            self.ai_parse_notes()
+            return
+        if path == "/api/ai/embed":
+            self.ai_embed()
+            return
+        if path == "/api/embeddings":
+            self.save_embeddings()
             return
         if path != "/api/data":
             self.send_error(404)
@@ -65,6 +119,131 @@ class TrackerHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
+
+    def send_json(self, status, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_bytes(status, body, "application/json; charset=utf-8")
+
+    def send_bytes(self, status, body, content_type):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def read_json(self, limit):
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0 or length > limit:
+            return None
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+
+    def ai_fallback(self):
+        self.send_json(503, {"ok": False, "fallback": True})
+
+    def ai_ask(self):
+        payload = self.read_json(80_000)
+        question = str((payload or {}).get("question") or "").strip()
+        report = str((payload or {}).get("report") or "").strip()
+        if not question or not report:
+            self.send_error(400, "Expected a question about one report")
+            return
+        try:
+            answer = neev_client().chat([
+                {"role": "system", "content": ASK_SYSTEM + "\n\nReport:\n" + report[:20000]},
+                {"role": "user", "content": question[:1000]},
+            ])
+        except NeevError:
+            self.ai_fallback()
+            return
+        self.send_json(200, {"ok": True, "answer": answer})
+
+    def ai_file_note(self):
+        payload = self.read_json(20_000)
+        description = str((payload or {}).get("description") or "").strip()
+        teams = [str(name).strip() for name in ((payload or {}).get("teams") or []) if str(name).strip()]
+        if not description:
+            self.send_error(400, "Expected a description")
+            return
+        try:
+            raw = neev_client().chat([
+                {"role": "system", "content": FILE_NOTE_SYSTEM},
+                {"role": "user", "content": json.dumps({"description": description[:4000], "teams": teams[:40]})},
+            ], max_tokens=400)
+            fields = sanitize_filed_note(extract_json(raw), teams[:40])
+        except (NeevError, json.JSONDecodeError, ValueError):
+            self.ai_fallback()
+            return
+        self.send_json(200, {"ok": True, "fields": fields})
+
+    def ai_parse_notes(self):
+        payload = self.read_json(120_000)
+        text = str((payload or {}).get("text") or "").strip()
+        if not text:
+            self.send_error(400, "Expected note text")
+            return
+        try:
+            raw = neev_client().chat([
+                {"role": "system", "content": PARSE_SYSTEM},
+                {"role": "user", "content": text[:40000]},
+            ], max_tokens=4096)
+            parsed = sanitize_import(extract_json(raw))
+        except (NeevError, json.JSONDecodeError, ValueError):
+            self.ai_fallback()
+            return
+        if not parsed:
+            self.ai_fallback()
+            return
+        self.send_json(200, {"ok": True, "parsed": parsed})
+
+    def ai_embed(self):
+        payload = self.read_json(80_000)
+        texts = (payload or {}).get("input")
+        if not isinstance(texts, list) or not texts:
+            self.send_error(400, "Expected texts to embed")
+            return
+        clean = [str(text).strip()[:2000] for text in texts[:16] if str(text).strip()]
+        if not clean:
+            self.send_error(400, "Expected texts to embed")
+            return
+        try:
+            vectors = neev_client().embed(clean)
+        except NeevError:
+            self.ai_fallback()
+            return
+        self.send_json(200, {"ok": True, "embeddings": vectors})
+
+    def save_embeddings(self):
+        payload = self.read_json(2_000_000)
+        incoming = (payload or {}).get("vectors") if isinstance(payload, dict) else None
+        if not isinstance(incoming, dict):
+            self.send_error(400, "Expected embedding vectors")
+            return
+        current = {"vectors": {}}
+        if EMBED_FILE.exists():
+            try:
+                stored = json.loads(EMBED_FILE.read_text(encoding="utf-8"))
+                if isinstance(stored.get("vectors"), dict):
+                    current = stored
+            except (OSError, json.JSONDecodeError):
+                current = {"vectors": {}}
+        for key, row in list(incoming.items())[:500]:
+            if not isinstance(row, dict):
+                continue
+            vector = row.get("vector")
+            digest = str(row.get("hash") or "")
+            if not isinstance(vector, list) or not vector or len(vector) > 4096:
+                continue
+            if not all(isinstance(value, (int, float)) for value in vector):
+                continue
+            current["vectors"][str(key)[:80]] = {"hash": digest[:80], "vector": [float(value) for value in vector]}
+        text = json.dumps(current)
+        temporary = EMBED_FILE.with_suffix(".json.tmp")
+        temporary.write_text(text + "\n", encoding="utf-8")
+        temporary.replace(EMBED_FILE)
+        self.send_json(200, {"ok": True, "count": len(current["vectors"])})
 
     def export_report_pdf(self):
         length = int(self.headers.get("Content-Length", "0") or "0")

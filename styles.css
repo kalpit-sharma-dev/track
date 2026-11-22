@@ -650,6 +650,31 @@ html {
     width: 108px;
 }
 
+.header-actions input.ask-input {
+    min-width: 180px;
+    flex: 1;
+    background-image: none;
+    padding-right: 14px;
+    cursor: text;
+}
+
+.ask-answer {
+    margin: 0 0 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+}
+
+.file-note-status {
+    min-height: 1.2em;
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+}
+
 .header-actions select:focus,
 .header-actions input:focus,
 .styled-select:focus {
@@ -2794,7 +2819,7 @@ form {
 
 /* ==================== PRINT STYLES ==================== */
 @media print {
-    .sidebar, .view-header button, .header-actions, .filter-bar {
+    .sidebar, .view-header button, .header-actions, .filter-bar, .ask-answer {
         display: none !important;
     }
 

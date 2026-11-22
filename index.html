@@ -400,10 +400,14 @@
                     <h2>Weekly Report</h2>
                     <div class="header-actions">
                         <input type="week" id="weekSelector" onchange="generateWeeklyReport()">
+                        <input type="text" class="ask-input" id="askWeek" placeholder="Ask this week" onkeydown="if (event.key === 'Enter') askReport('week')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('week')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskWeek" onclick="copyAskAnswer('week')" disabled>Copy answer</button>
                         <button class="btn btn-secondary" id="copyWeeklyReport" onclick="copyReportToClipboard()">📋 Copy for Email</button>
                         <button class="btn btn-primary" id="downloadWeeklyPdf" onclick="exportWeeklyReport()">📄 Export PDF</button>
                     </div>
                 </div>
+                <p id="askWeekAnswer" class="ask-answer" hidden></p>
 
                 <div class="weekly-report" id="weeklyReport">
                     <p class="empty-state">Choose a week to build the management update.</p>
@@ -415,10 +419,14 @@
                     <h2>Monthly Report</h2>
                     <div class="header-actions">
                         <input type="month" id="monthSelector" onchange="generatePeriodReport('month')">
+                        <input type="text" class="ask-input" id="askMonth" placeholder="Ask this month" onkeydown="if (event.key === 'Enter') askReport('month')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('month')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskMonth" onclick="copyAskAnswer('month')" disabled>Copy answer</button>
                         <button class="btn btn-secondary" id="copyMonthlyReport" onclick="copyReportToClipboard('month')">📋 Copy for Email</button>
                         <button class="btn btn-primary" id="downloadMonthlyPdf" onclick="exportWeeklyReport('month')">📄 Export PDF</button>
                     </div>
                 </div>
+                <p id="askMonthAnswer" class="ask-answer" hidden></p>
                 <div class="weekly-report" id="monthlyReport">
                     <p class="empty-state">Choose a month to build the management update.</p>
                 </div>
@@ -435,10 +443,14 @@
                             <option value="3">Q3 · Jul–Sep</option>
                             <option value="4">Q4 · Oct–Dec</option>
                         </select>
+                        <input type="text" class="ask-input" id="askQuarter" placeholder="Ask this quarter" onkeydown="if (event.key === 'Enter') askReport('quarter')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('quarter')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskQuarter" onclick="copyAskAnswer('quarter')" disabled>Copy answer</button>
                         <button class="btn btn-secondary" id="copyQuarterlyReport" onclick="copyReportToClipboard('quarter')">📋 Copy for Email</button>
                         <button class="btn btn-primary" id="downloadQuarterlyPdf" onclick="exportWeeklyReport('quarter')">📄 Export PDF</button>
                     </div>
                 </div>
+                <p id="askQuarterAnswer" class="ask-answer" hidden></p>
                 <div class="weekly-report" id="quarterlyReport">
                     <p class="empty-state">Choose a quarter to build the management update.</p>
                 </div>
@@ -449,10 +461,14 @@
                     <h2>Yearly Report</h2>
                     <div class="header-actions">
                         <input type="number" id="yearSelector" min="2000" max="2100" title="Financial year starting 1 April. 2026 means 1 Apr 2026 to 31 Mar 2027." onchange="generatePeriodReport('year')">
+                        <input type="text" class="ask-input" id="askYear" placeholder="Ask this year" onkeydown="if (event.key === 'Enter') askReport('year')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('year')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskYear" onclick="copyAskAnswer('year')" disabled>Copy answer</button>
                         <button class="btn btn-secondary" id="copyYearlyReport" onclick="copyReportToClipboard('year')">📋 Copy for Email</button>
                         <button class="btn btn-primary" id="downloadYearlyPdf" onclick="exportWeeklyReport('year')">📄 Export PDF</button>
                     </div>
                 </div>
+                <p id="askYearAnswer" class="ask-answer" hidden></p>
                 <div class="weekly-report" id="yearlyReport">
                     <p class="empty-state">Choose a year to build the management update.</p>
                 </div>
@@ -511,6 +527,7 @@
                 <div class="form-group">
                     <label>Description</label>
                     <textarea id="updateDescription" rows="4" required placeholder="What did you work on?"></textarea>
+                    <p id="fileUpdateStatus" class="file-note-status"></p>
                 </div>
                 <div class="form-group">
                     <label>People Involved (comma separated)</label>
@@ -539,6 +556,7 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('addUpdateModal')">Cancel</button>
+                    <button type="button" class="btn btn-secondary" id="fileUpdate" onclick="fileUpdateWithAI()">File this note</button>
                     <button type="submit" class="btn btn-primary">Save Update</button>
                 </div>
             </form>

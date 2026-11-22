@@ -20,6 +20,7 @@ const DATA_API = '/api/data';
 // Initialize App
     document.addEventListener('DOMContentLoaded', async () => {
     await loadData();
+    await loadAiSupport();
     syncYourNameField();
     initializeApp();
     setupNavigation();
@@ -291,13 +292,12 @@ function renderSearchResults(results, query) {
     const container = document.getElementById('searchResults');
     const totalResults = results.updates.length + results.actions.length + results.teams.length;
 
-    if (totalResults === 0) {
-        container.innerHTML = `<p class="empty-state">No results found for "${escapeHtml(query)}"</p>`;
-        return;
-    }
+    const summary = totalResults === 0
+        ? `<p class="empty-state">No results found for "${escapeHtml(query)}"</p>`
+        : `<p style="margin-bottom: 20px; color: var(--text-secondary);">Found ${totalResults} result${totalResults === 1 ? '' : 's'} for "<strong>${escapeHtml(query)}</strong>". Every update, action, person, team, tag, and ticket is included.</p>`;
 
     container.innerHTML = `
-        <p style="margin-bottom: 20px; color: var(--text-secondary);">Found ${totalResults} result${totalResults === 1 ? '' : 's'} for "<strong>${escapeHtml(query)}</strong>". Every update, action, person, team, tag, and ticket is included.</p>
+        ${summary}
         ${renderSearchSection('📝 Updates', results.updates, 'update', query, (row) => `
             <div class="search-item" onclick="openUpdateFromSearch('${row.id}')">
                 <strong>${highlightText(row.update.description, query)}</strong>
@@ -333,7 +333,9 @@ function renderSearchResults(results, query) {
                 </div>
             </div>
         `)}
+        <div id="relatedNotes"></div>
     `;
+    scheduleRelatedNotes(query, results.updates.map(row => row.id));
 }
 
 function showMoreSearch(type) {
@@ -407,6 +409,7 @@ function storeData(updateTimestamp) {
     sessionStorage.setItem('techLeadTrackerBackup', text);
     updateLastSavedIndicator();
     writeDataFile(text);
+    scheduleEmbedUpdates();
 }
 
 function writeDataFile(text) {
@@ -693,6 +696,8 @@ function saveYourName() {
 function openAddUpdateModal() {
     document.getElementById('addUpdateForm').reset();
     document.getElementById('updateDate').value = localDateString();
+    const status = document.getElementById('fileUpdateStatus');
+    if (status) status.textContent = '';
     openModal('addUpdateModal');
 }
 
@@ -2798,7 +2803,7 @@ function importTextFile(event) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         const text = String(e.target.result || '');
         const trimmed = text.trim();
         if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
@@ -2806,7 +2811,7 @@ function importTextFile(event) {
             return;
         }
 
-        const parsed = parseTextImport(text);
+        const parsed = await parseUploadedNotes(text);
         const plan = planTextImport(appData, parsed);
         const hasAdditions = plan.newTeams.length || plan.memberAdds.length || plan.newUpdates.length || plan.newActions.length;
 
@@ -2834,6 +2839,303 @@ function importTextFile(event) {
         showImportResult(plan, true);
     };
     reader.readAsText(file);
+}
+
+const ASK_FIELDS = {
+    week: ['askWeek', 'askWeekAnswer', 'copyAskWeek'],
+    month: ['askMonth', 'askMonthAnswer', 'copyAskMonth'],
+    quarter: ['askQuarter', 'askQuarterAnswer', 'copyAskQuarter'],
+    year: ['askYear', 'askYearAnswer', 'copyAskYear']
+};
+
+let aiStatus = { chat: false, embed: false };
+let noteVectors = { vectors: {} };
+let relatedRequest = 0;
+let relatedQueued = null;
+let relatedRunning = false;
+let embedTimer = null;
+let embedPromise = null;
+
+async function loadAiSupport() {
+    try {
+        const [statusResponse, vectorResponse] = await Promise.all([
+            fetch('/api/ai/status', { cache: 'no-store' }),
+            fetch('/api/embeddings', { cache: 'no-store' })
+        ]);
+        aiStatus = statusResponse.ok ? await statusResponse.json() : { chat: false, embed: false };
+        const stored = vectorResponse.ok ? await vectorResponse.json() : { vectors: {} };
+        noteVectors = stored && stored.vectors ? stored : { vectors: {} };
+    } catch (error) {
+        aiStatus = { chat: false, embed: false };
+        noteVectors = { vectors: {} };
+    }
+    scheduleEmbedUpdates();
+}
+
+async function postAi(path, payload) {
+    const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error('fallback');
+    return response.json();
+}
+
+function noteEmbedText(update) {
+    const team = appData.teams.find(item => item.id === update.teamId);
+    return [update.description, team ? team.name : '', update.people, update.jira, ...(update.tags || [])]
+        .filter(Boolean)
+        .join(' ');
+}
+
+function textHash(value) {
+    let hash = 5381;
+    const text = String(value);
+    for (let index = 0; index < text.length; index++) {
+        hash = ((hash << 5) + hash) + text.charCodeAt(index);
+    }
+    return (hash >>> 0).toString(16);
+}
+
+function scheduleEmbedUpdates() {
+    if (!aiStatus.embed) return;
+    clearTimeout(embedTimer);
+    embedTimer = setTimeout(embedMissingNotes, 600);
+}
+
+function embedMissingNotes() {
+    if (!aiStatus.embed) return Promise.resolve();
+    if (!embedPromise) {
+        embedPromise = embedMissingNotesNow().finally(() => {
+            embedPromise = null;
+        });
+    }
+    return embedPromise;
+}
+
+async function embedMissingNotesNow() {
+    const pending = appData.updates.filter(update => {
+        const text = noteEmbedText(update);
+        const stored = noteVectors.vectors[update.id];
+        return text && (!stored || stored.hash !== textHash(text));
+    }).slice(0, 16);
+    if (!pending.length) return;
+    const texts = pending.map(noteEmbedText);
+    let embeddings;
+    try {
+        const body = await postAi('/api/ai/embed', { input: texts });
+        embeddings = body.embeddings;
+    } catch (error) {
+        return;
+    }
+    if (!Array.isArray(embeddings) || embeddings.length !== pending.length) return;
+    pending.forEach((update, index) => {
+        noteVectors.vectors[update.id] = { hash: textHash(texts[index]), vector: embeddings[index] };
+    });
+    try {
+        await postAi('/api/embeddings', { vectors: noteVectors.vectors });
+    } catch (error) {
+        return;
+    }
+}
+
+function cosineSimilarity(left, right) {
+    const length = Math.min(left.length, right.length);
+    let dot = 0;
+    let leftNorm = 0;
+    let rightNorm = 0;
+    for (let index = 0; index < length; index++) {
+        dot += left[index] * right[index];
+        leftNorm += left[index] * left[index];
+        rightNorm += right[index] * right[index];
+    }
+    if (!leftNorm || !rightNorm) return 0;
+    return dot / Math.sqrt(leftNorm * rightNorm);
+}
+
+function scheduleRelatedNotes(query, shownIds) {
+    const host = document.getElementById('relatedNotes');
+    if (!host) return;
+    if (!aiStatus.embed || shownIds.length >= 3) {
+        relatedRequest += 1;
+        host.innerHTML = '';
+        return;
+    }
+    relatedQueued = { query, shownIds: shownIds.slice(), request: ++relatedRequest };
+    host.innerHTML = '';
+    if (!relatedRunning) drainRelatedNotes();
+}
+
+async function drainRelatedNotes() {
+    relatedRunning = true;
+    try {
+    while (relatedQueued) {
+        const job = relatedQueued;
+        relatedQueued = null;
+        try {
+            await embedMissingNotes();
+            if (job.request !== relatedRequest) continue;
+            const body = await postAi('/api/ai/embed', { input: [job.query] });
+            if (job.request !== relatedRequest) continue;
+            const vector = body.embeddings && body.embeddings[0];
+            if (!Array.isArray(vector)) continue;
+            const shown = new Set(job.shownIds);
+            const related = appData.updates.map(update => {
+                const stored = noteVectors.vectors[update.id];
+                if (!stored || shown.has(update.id)) return null;
+                const score = cosineSimilarity(vector, stored.vector);
+                return score >= 0.45 ? { update, score } : null;
+            }).filter(Boolean).sort((left, right) => right.score - left.score).slice(0, 5);
+            const current = document.getElementById('relatedNotes');
+            if (job.request !== relatedRequest || !current || !related.length) continue;
+            current.innerHTML = `
+                <div class="search-section">
+                    <h4>Related notes (${related.length})</h4>
+                    ${related.map(row => {
+                        const team = appData.teams.find(item => item.id === row.update.teamId);
+                        return `
+                            <div class="search-item" onclick="openUpdateFromSearch('${row.update.id}')">
+                                <strong>${escapeHtml(row.update.description)}</strong>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                    ${formatDate(row.update.date, 'short')}
+                                    ${team ? ` • ${escapeHtml(team.name)}` : ''}
+                                    ${row.update.people ? ` • ${escapeHtml(row.update.people)}` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        } catch (error) {
+            const current = document.getElementById('relatedNotes');
+            if (job.request === relatedRequest && current) current.innerHTML = '';
+        }
+    }
+    } finally {
+        relatedRunning = false;
+        if (relatedQueued) drainRelatedNotes();
+    }
+}
+
+async function askReport(period) {
+    const fields = ASK_FIELDS[period];
+    const input = document.getElementById(fields[0]);
+    const answer = document.getElementById(fields[1]);
+    const copy = document.getElementById(fields[2]);
+    const question = input.value.trim();
+    if (!question) return;
+    generatePeriodReport(period);
+    answer.hidden = false;
+    copy.disabled = true;
+    if (!latestReportModel || latestReportModel.period !== period) {
+        answer.textContent = 'Choose a period first. The report itself is unchanged.';
+        return;
+    }
+    if (!aiStatus.chat) {
+        answer.textContent = 'The assistant is unavailable. Use Copy for Email for the full report.';
+        return;
+    }
+    answer.textContent = 'Reading this report…';
+    try {
+        const body = await postAi('/api/ai/ask', {
+            question,
+            report: buildWeeklyEmail(latestReportModel)
+        });
+        answer.textContent = body.answer || 'The assistant is unavailable. Use Copy for Email for the full report.';
+        copy.disabled = !body.answer;
+    } catch (error) {
+        answer.textContent = 'The assistant is unavailable. Use Copy for Email for the full report.';
+        copy.disabled = true;
+    }
+}
+
+function copyAskAnswer(period) {
+    const fields = ASK_FIELDS[period];
+    const answer = document.getElementById(fields[1]);
+    const copy = document.getElementById(fields[2]);
+    const text = answer.textContent.trim();
+    if (!text || copy.disabled) return;
+    navigator.clipboard.writeText(text).then(() => {
+        copy.textContent = 'Copied';
+        setTimeout(() => {
+            copy.textContent = 'Copy answer';
+        }, 1500);
+    }).catch(() => {
+        copy.textContent = 'Copy failed';
+    });
+}
+
+async function fileUpdateWithAI() {
+    const description = document.getElementById('updateDescription').value.trim();
+    const status = document.getElementById('fileUpdateStatus');
+    if (!description) {
+        status.textContent = 'Write the description first.';
+        return;
+    }
+    if (!aiStatus.chat) {
+        status.textContent = 'The assistant is unavailable, so the form was left as you typed it.';
+        return;
+    }
+    status.textContent = 'Reading the description…';
+    try {
+        const body = await postAi('/api/ai/file-note', {
+            description,
+            teams: appData.teams.map(team => team.name)
+        });
+        const applied = applyFiledNote(body.fields || {});
+        status.textContent = applied
+            ? 'Filled from the description. Nothing is saved until you click Save.'
+            : 'Nothing in the description matched a team, person, ticket, status, or target date. The form was left as you typed it.';
+    } catch (error) {
+        status.textContent = 'The assistant is unavailable, so the form was left as you typed it.';
+    }
+}
+
+function applyFiledNote(fields) {
+    let applied = false;
+    if (fields.team) {
+        const select = document.getElementById('updateTeam');
+        const match = Array.from(select.options).find(option => option.textContent.trim().toLowerCase() === fields.team.toLowerCase());
+        if (match) {
+            select.value = match.value;
+            applied = true;
+        }
+    }
+    if (fields.people) {
+        document.getElementById('updatePeople').value = fields.people;
+        applied = true;
+    }
+    if (fields.jira) {
+        document.getElementById('updateJira').value = fields.jira;
+        applied = true;
+    }
+    if (fields.status && document.querySelector(`#updateStatus option[value="${fields.status}"]`)) {
+        document.getElementById('updateStatus').value = fields.status;
+        applied = true;
+    }
+    if (fields.targetDate) {
+        document.getElementById('updateTargetDate').value = fields.targetDate;
+        applied = true;
+    }
+    if (fields.category && document.querySelector(`#updateCategory option[value="${fields.category}"]`)) {
+        document.getElementById('updateCategory').value = fields.category;
+        applied = true;
+    }
+    return applied;
+}
+
+async function parseUploadedNotes(text) {
+    if (aiStatus.chat) {
+        try {
+            const body = await postAi('/api/ai/parse-notes', { text });
+            const parsed = body.parsed;
+            if (parsed && (parsed.updates.length || parsed.actions.length || parsed.teams.length)) return parsed;
+        } catch (error) {
+            return parseTextImport(text);
+        }
+    }
+    return parseTextImport(text);
 }
 
 function applyTextImportPlan(plan) {

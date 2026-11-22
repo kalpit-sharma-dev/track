@@ -243,7 +243,12 @@ Weekly, monthly, quarterly, and yearly reports use the same layout.
 
 **Exporting:**
 - **Copy for Email**: Copies a plain-text update you can paste into Outlook or Gmail
+- **Ask**: On each report, one box answers from that period only. **Copy answer** sits next to Copy for Email.
 - **Export PDF**: Downloads a PDF of the full on-screen report, including every team, note, person, task, and timeline. Start the tracker with the Mac or Windows script first, because the local server creates the file. Chrome or Edge needs to be installed.
+
+**Filing a note:** On Add Update, **File this note** reads the description and fills team, people, Jira, status, and target date. Nothing is saved until **Save**.
+
+**Upload Notes** sends the file to the assistant first and adds the records it finds. If that call fails, the same file is read by the existing text template.
 
 ### Using Analytics
 
@@ -266,7 +271,7 @@ Click the **🌙** icon in the top-right of the sidebar header to toggle dark mo
 
 ## Search
 
-The search box at the top of the sidebar looks through **everything already saved**:
+The search box at the top of the sidebar looks through **everything already saved**. When a keyword search finds fewer than three updates, **Related notes** adds the closest saved updates from stored embeddings:
 
 | You can search for | Examples |
 | --- | --- |
@@ -377,6 +382,27 @@ Open **Analytics** and choose the range:
 | This year / Last year | Annual appraisal |
 
 The label next to the menu shows the exact start and end dates. Charts, teams, people, tags, and action status all use that same period.
+
+## Assistant
+
+The assistant is optional. The tracker keeps working when it is not configured or when a call fails.
+
+Set these in the environment before starting `server.py`. Leave the keys out of the repository.
+
+| Name | Meaning |
+| --- | --- |
+| `NEEV_CHAT_URL` | Chat completions URL |
+| `NEEV_CHAT_API_KEY` | Chat key |
+| `NEEV_CHAT_MODEL` | Defaults to `gemini-2.5-flash` |
+| `NEEV_EMBED_URL` | Embeddings URL |
+| `NEEV_EMBED_API_KEY` | Embeddings key |
+| `NEEV_EMBED_MODEL` | Defaults to `BAAI/bge-m3` |
+| `NEEV_USECASE_ID` | Sent as `x-usecase-id` when set |
+| `NEEV_TIMEOUT` | Defaults to `60s` |
+| `NEEV_MIN_INTERVAL` | Defaults to `7s`, separately for chat and embeddings |
+| `NEEV_INSECURE_SKIP_VERIFY` | `true` only for a DEV gateway with a private certificate |
+
+Chat requests send `x-goog-api-key` and `Authorization: Bearer`. Embedding requests send `Authorization: Bearer`. Vectors are stored in `tracker-embeddings.json` beside the notes file.
 
 ## Data Storage & Backup
 
