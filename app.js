@@ -2368,6 +2368,105 @@ function decisionsHtml(model) {
     </section>`;
 }
 
+function noneForPeriod(model) {
+    return `None for this ${model.periodName || 'week'}.`;
+}
+
+function leadershipLines(model, buckets) {
+    const notesRow = comparisonRows(model).find(row => row.label === 'Notes');
+    const teamsWithNotes = buckets.active.filter(pack => pack.updates.length);
+    const lines = [];
+    if (model.updates.length) {
+        const across = teamsWithNotes.length ? ` across ${countWord(teamsWithNotes.length, 'team', 'teams')}` : '';
+        lines.push(`${countWord(model.updates.length, 'note', 'notes')}${across}, ${notesRow.change}.`);
+    } else {
+        lines.push(`No notes were logged, ${notesRow.change}.`);
+    }
+    const inProgress = model.openActions.filter(action => action.status === 'in-progress').length;
+    const pending = model.openActions.filter(action => action.status === 'pending').length;
+    const blocked = model.openActions.filter(action => action.status === 'blocked').length;
+    const openBits = [];
+    if (inProgress) openBits.push(`${inProgress} in progress`);
+    if (pending) openBits.push(`${pending} not started`);
+    if (blocked) openBits.push(`${blocked} blocked`);
+    lines.push(`${countWord(model.doneActions.length, 'task', 'tasks')} finished, ${countWord(model.openActions.length, 'task is', 'tasks are')} still open${openBits.length ? ` (${openBits.join(', ')})` : ''}.`);
+    lines.push(blocked ? `${countWord(blocked, 'blocker is', 'blockers are')} open.` : 'No blockers are open.');
+    const sentence = value => shortText(value, 90).replace(/[.\s]+$/, '');
+    teamsWithNotes.forEach(pack => {
+        const notes = pack.updates.map(update => sentence(update.description));
+        const extra = notes.length > 3 ? `; and ${notes.length - 3} more` : '';
+        lines.push(`${pack.team.name}: ${notes.slice(0, 3).join('; ')}${extra}.`);
+    });
+    const audits = model.updates.filter(update => update.category === 'audit');
+    if (audits.length) lines.push(`Audits: ${audits.map(update => sentence(update.description)).join('; ')}.`);
+    const reviews = model.updates.filter(update => update.category === 'review');
+    if (reviews.length) lines.push(`PR reviews: ${reviews.map(update => sentence(update.description)).join('; ')}.`);
+
+    const overdue = reportDateRows(model).filter(row => row.kind === 'Overdue');
+    const blockers = model.openActions.filter(action => action.status === 'blocked');
+    const overdueTitles = new Set(overdue.map(row => row.title));
+    const risks = [];
+    overdue.forEach(row => risks.push(`${row.title} is overdue (${[row.owner, jiraPhrase(row.jira)].filter(Boolean).join(', ')})`));
+    blockers.forEach(action => {
+        if (overdueTitles.has(action.title)) return;
+        const who = [splitOwnerNames(action.owner).join(', ') || 'Unassigned', jiraPhrase(action.jira)].filter(Boolean).join(', ');
+        risks.push(`${action.title} is blocked (${who})`);
+    });
+    const next = [];
+    model.openActions.forEach(action => {
+        if (action.status === 'blocked' || overdueTitles.has(action.title)) return;
+        next.push(taskMoveLine(action));
+    });
+    comingUpRows(model).forEach(row => {
+        if (next.some(line => line.startsWith(row.title))) return;
+        next.push(`${row.title} — ${[row.owner, row.team, targetPhrase(row.target), jiraPhrase(row.jira)].filter(Boolean).join(' · ')}`);
+    });
+    const decisions = blockers.map(taskMoveLine);
+    overdue.forEach(row => {
+        if (blockers.some(action => action.title === row.title)) return;
+        decisions.push(`${row.title} — ${[row.owner, jiraPhrase(row.jira)].filter(Boolean).join(' · ')}`);
+    });
+    const asks = [];
+    [...blockers, ...model.openActions.filter(action => overdueTitles.has(action.title))].forEach(action => {
+        const ask = actionDetail(action);
+        if (ask && !asks.includes(ask)) asks.push(ask);
+    });
+    return {
+        lines,
+        attention: [
+            ['Risks', risks.length ? `${risks.join('. ')}.` : noneForPeriod(model)],
+            ['Next steps', next.length ? `${next.join('; ')}.` : noneForPeriod(model)],
+            ['Decisions pending', decisions.length ? `${decisions.join('; ')}.` : noneForPeriod(model)],
+            ['Support required', asks.length ? asks.join(' ') : noneForPeriod(model)]
+        ]
+    };
+}
+
+function leadershipHtml(model, buckets) {
+    const summary = leadershipLines(model, buckets);
+    const bullets = summary.lines.map(line => `<li>${escapeHtml(line)}</li>`).join('');
+    const attention = summary.attention.map(([label, text]) => `<li><strong>${escapeHtml(label)}.</strong> ${escapeHtml(text)}</li>`).join('');
+    return `<section class="leadership-summary">
+        <div class="section-label">Leadership summary</div>
+        <h4>${escapeHtml(model.label)} summary</h4>
+        <p class="fine">${escapeHtml(model.range)}</p>
+        <ul>${bullets}</ul>
+        <div class="leadership-attention">
+            <h4>Leadership attention required</h4>
+            <ul>${attention}</ul>
+        </div>
+    </section>`;
+}
+
+function leadershipEmailLines(model, buckets) {
+    const summary = leadershipLines(model, buckets);
+    const lines = ['LEADERSHIP SUMMARY', `${model.label} summary`, model.range];
+    summary.lines.forEach(line => lines.push(`• ${line}`));
+    lines.push('', 'LEADERSHIP ATTENTION REQUIRED');
+    summary.attention.forEach(([label, text]) => lines.push(`• ${label}. ${text}`));
+    return lines;
+}
+
 function renderWeeklyHtml(model) {
     const buckets = bucketByTeam(model);
     const people = peopleThisWeek(model);
@@ -2412,6 +2511,7 @@ function renderWeeklyHtml(model) {
         </div>
         <div class="mgmt-stats">${stats.map(([value, label]) => `<div class="mgmt-stat"><strong>${value}</strong><span>${label}</span></div>`).join('')}</div>
         <div class="mgmt-body">
+            ${leadershipHtml(model, buckets)}
             ${decisionsHtml(model)}
             ${comparisonHtml(model)}
             <div class="insight-row">${insightTiles(model, buckets, people).map(tile => `
@@ -4212,6 +4312,8 @@ function buildWeeklyEmail(model) {
         'MANAGEMENT UPDATE',
         model.label,
         model.range,
+        '',
+        ...leadershipEmailLines(model, buckets),
         '',
         managementLead(model, buckets, people),
         '',

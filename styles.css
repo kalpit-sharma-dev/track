@@ -1610,6 +1610,7 @@ html {
     color: #7F1D1D;
 }
 
+.leadership-summary,
 .decision-board,
 .compare-board {
     border: 1px solid var(--border-color);
@@ -1618,23 +1619,37 @@ html {
     background: var(--bg-secondary);
 }
 
+.leadership-summary h4,
+.decision-board h4 {
+    margin: 12px 0 6px;
+}
+
+.leadership-summary h4:first-of-type {
+    margin-top: 0;
+}
+
+.leadership-summary ul,
+.decision-board ul {
+    margin-left: 18px;
+}
+
+.leadership-summary li,
+.decision-board li {
+    margin: 4px 0;
+    color: var(--text-primary);
+}
+
+.leadership-attention {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
 .decision-board {
     background: #FEF2F2;
     border-color: #FECACA;
 }
 
-.decision-board h4 {
-    margin: 12px 0 6px;
-}
-
-.decision-board ul {
-    margin-left: 18px;
-}
-
-.decision-board li {
-    margin: 4px 0;
-    color: var(--text-primary);
-}
 
 .decision-ask {
     margin: 2px 0 6px;
