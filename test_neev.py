@@ -101,6 +101,12 @@ class NeevClientTest(unittest.TestCase):
         self.assertEqual(self.client.chat([{"role": "user", "content": "Hi"}]), "ok")
         self.assertEqual(len(ScriptedGateway.seen), 2)
 
+    def test_reads_answer_text_from_content_parts(self):
+        ScriptedGateway.script.append((200, {"choices": [{"message": {"content": [
+            {"type": "text", "text": "{\"team\": \"Deposits\"}"}
+        ]}}]}, None))
+        self.assertIn("Deposits", self.client.chat([{"role": "user", "content": "File it"}]))
+
     def test_does_not_retry_a_permanent_client_error(self):
         ScriptedGateway.script.append((400, {"error": {"message": "bad request"}}, None))
         with self.assertRaises(neev.NeevError):
@@ -152,6 +158,40 @@ class NeevClientTest(unittest.TestCase):
         self.assertEqual(parsed["updates"][0]["date"], "2026-11-21")
         self.assertEqual(parsed["actions"][0]["owner"], "Rajesh")
         self.assertEqual(neev.extract_json("```json\n{\"team\": \"Performance Pod\"}\n```")["team"], "Performance Pod")
+        note = "Performance Pod is blocked with Murthy on RITM8019999. Target 30 Nov 2026."
+        grounded = neev.ground_filed_note(neev.sanitize_filed_note({
+            "team": "Performance Pod",
+            "people": "Murthy, Invented Person",
+            "jira": "RITM8019999",
+            "status": "blocked",
+            "targetDate": "2026-11-30",
+            "category": "issue",
+        }, ["Performance Pod"]), note)
+        self.assertEqual(grounded["team"], "Performance Pod")
+        self.assertEqual(grounded["people"], "Murthy")
+        self.assertEqual(grounded["jira"], "RITM8019999")
+        self.assertEqual(grounded["targetDate"], "2026-11-30")
+        invented = neev.ground_filed_note({
+            "team": "Performance Pod",
+            "people": "Murthy, Invented Person",
+            "jira": "RITM8019999",
+            "status": "blocked",
+            "targetDate": "2026-11-30",
+            "category": "issue",
+        }, "Morning sync with Murthy.")
+        self.assertEqual(invented["people"], "Murthy")
+        self.assertEqual(invented["jira"], "")
+        self.assertEqual(invented["team"], "")
+        self.assertEqual(invented["status"], "")
+        self.assertEqual(invented["targetDate"], "")
+        parsed = neev.ground_import(neev.sanitize_import({
+            "updates": [
+                {"date": "2026-11-21", "description": "Kavita finished the deposits review", "teamName": "Deposits", "people": "Kavita", "jira": "DEP-55", "status": "completed", "category": "review"},
+                {"date": "2026-11-21", "description": "Invented a migration program", "people": "Nobody"},
+            ]
+        }), "On 21 Nov 2026 Kavita finished the deposits review for DEP-55.")
+        self.assertEqual(len(parsed["updates"]), 1)
+        self.assertEqual(parsed["updates"][0]["jira"], "DEP-55")
 
 
 class TrackerRouteTest(unittest.TestCase):
@@ -222,13 +262,30 @@ class TrackerRouteTest(unittest.TestCase):
             "category": "issue",
         })}}]}, None)]
         status, body = self.post("/api/ai/file-note", {
-            "description": "MB app is blocked with Murthy, RITM8019999, target 30 Nov 2026",
+            "description": "Performance Pod is blocked with Murthy, RITM8019999, target 30 Nov 2026",
             "teams": ["Performance Pod", "Deposits"],
         })
         self.assertEqual(status, 200)
         self.assertEqual(body["fields"]["team"], "Performance Pod")
         self.assertEqual(body["fields"]["jira"], "RITM8019999")
         self.assertEqual(body["fields"]["targetDate"], "2026-11-30")
+        ScriptedGateway.script.append((200, {"choices": [{"message": {"content": json.dumps({
+            "team": "Performance Pod",
+            "people": "Invented Person",
+            "jira": "FAKE-1",
+            "status": "blocked",
+            "targetDate": "2026-12-01",
+            "category": "audit",
+        })}}]}, None))
+        status, body = self.post("/api/ai/file-note", {
+            "description": "Morning sync with Murthy.",
+            "teams": ["Performance Pod"],
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(body["fields"]["people"], "")
+        self.assertEqual(body["fields"]["jira"], "")
+        self.assertEqual(body["fields"]["team"], "")
+        self.assertEqual(body["fields"]["targetDate"], "")
         ScriptedGateway.script.append((200, {"data": [{"index": 0, "embedding": [0.2, 0.8]}]}, None))
         status, body = self.post("/api/ai/embed", {"input": ["slow screens"]})
         self.assertEqual(body["embeddings"], [[0.2, 0.8]])

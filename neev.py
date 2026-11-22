@@ -128,10 +128,10 @@ class NeevClient:
         if not isinstance(choices, list) or not choices:
             raise NeevError("Neev chat returned no choices")
         message = choices[0].get("message") if isinstance(choices[0], dict) else None
-        content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, str) or not content.strip():
+        content = message_text(message)
+        if not content:
             raise NeevError("Neev chat returned an empty answer")
-        return content.strip()
+        return content
 
     def embed(self, texts):
         if not embed_configured(self.config):
@@ -159,7 +159,7 @@ class NeevClient:
             vector = row.get("embedding")
             if not isinstance(index, int) or index < 0 or index >= len(clean):
                 raise NeevError("Neev embeddings returned an index outside the input")
-            if not isinstance(vector, list) or not vector or not all(isinstance(value, (int, float)) for value in vector):
+            if not isinstance(vector, list) or not vector or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in vector):
                 raise NeevError("Neev embeddings returned an invalid vector")
             if width is None:
                 width = len(vector)
@@ -274,6 +274,26 @@ def _header(response, name):
         return None
     getter = getattr(headers, "get", None)
     return getter(name) if getter else None
+
+
+def message_text(message):
+    """Read assistant text from a string or a list of content parts."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get("text") if isinstance(part.get("text"), str) else part.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(part.strip() for part in parts if part and part.strip()).strip()
+    return ""
 
 
 def extract_json(text):
@@ -400,6 +420,172 @@ def sanitize_import(payload):
             "recurring": "",
             "notes": _clean_text(row.get("notes"), 500),
         })
+    if not teams and not updates and not actions:
+        return None
+    return {"teams": teams, "updates": updates, "actions": actions, "errors": []}
+
+
+MONTH_NAMES = (
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+)
+STATUS_WORDS = {
+    "blocked": ("blocked", "blocker"),
+    "completed": ("completed", "complete", "done", "closed", "finished"),
+    "in-progress": ("in progress", "in-progress", "wip", "ongoing"),
+    "pending": ("pending", "to do", "todo", "not started"),
+}
+CATEGORY_WORDS = {
+    "meeting": ("meeting", "sync", "call"),
+    "discussion": ("discuss",),
+    "review": ("review", "pull request"),
+    "approval": ("approv",),
+    "audit": ("audit", "checkmarx"),
+    "planning": ("plan",),
+    "issue": ("issue", "bug", "error", "blocked", "blocker"),
+    "other": (),
+}
+
+
+def _mentioned(name, text):
+    token = str(name or "").strip().lower()
+    if len(token) < 2:
+        return False
+    return re.search(r"(?<![a-z0-9])" + re.escape(token) + r"(?![a-z0-9])", text.lower()) is not None
+
+
+def _ticket_mentioned(ticket, text):
+    folded = re.sub(r"[^a-z0-9]+", "", str(ticket or "").lower())
+    if len(folded) < 3:
+        return False
+    return folded in re.sub(r"[^a-z0-9]+", "", text.lower())
+
+
+def _ordinal(day):
+    if 10 <= day % 100 <= 20:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
+def _date_mentioned(iso, text):
+    if not iso:
+        return False
+    year, month, day = (int(part) for part in iso.split("-"))
+    month_name = MONTH_NAMES[month - 1]
+    short = month_name[:3]
+    forms = [
+        iso,
+        f"{day} {short} {year}",
+        f"{short} {day} {year}",
+        f"{short} {day}, {year}",
+        f"{day} {month_name} {year}",
+        f"{month_name} {day} {year}",
+        f"{month_name} {day}, {year}",
+        f"{day}{_ordinal(day)} {short} {year}",
+        f"{day}/{month}/{year}",
+        f"{day}-{month}-{year}",
+        f"{month}/{day}/{year}",
+        f"{day:02d}/{month:02d}/{year}",
+        f"{day:02d}-{month:02d}-{year}",
+    ]
+    lowered = text.lower()
+    return any(form.lower() in lowered for form in forms)
+
+
+def _status_mentioned(status, text):
+    return any(word in text.lower() for word in STATUS_WORDS.get(status, ()))
+
+
+def _category_mentioned(category, text):
+    if category == "review" and re.search(r"(?<![a-z0-9])prs?(?![a-z0-9])", text.lower()):
+        return True
+    return any(word in text.lower() for word in CATEGORY_WORDS.get(category, ()))
+
+
+def _team_mentioned(name, text):
+    if _mentioned(name, text):
+        return True
+    return any(_mentioned(word, text) for word in re.split(r"[^A-Za-z0-9]+", name) if len(word) >= 3)
+
+
+def _words_supported(value, text):
+    words = [word.lower() for word in re.findall(r"[A-Za-z0-9]{4,}", str(value or ""))]
+    if not words:
+        return str(value or "").strip().lower() in text.lower()
+    found = sum(1 for word in words if word in text.lower())
+    return found >= max(1, (len(words) + 1) // 2)
+
+
+def _people_mentioned(people, text):
+    kept = [name.strip() for name in str(people or "").split(",") if _mentioned(name.strip(), text)]
+    return ", ".join(kept)
+
+
+def ground_filed_note(fields, source):
+    text = str(source or "")
+    grounded = dict(fields)
+    if grounded.get("team") and not _team_mentioned(grounded["team"], text):
+        grounded["team"] = ""
+    grounded["people"] = _people_mentioned(grounded.get("people"), text)
+    if grounded.get("jira") and not _ticket_mentioned(grounded["jira"], text):
+        grounded["jira"] = ""
+    if grounded.get("status") and not _status_mentioned(grounded["status"], text):
+        grounded["status"] = ""
+    if grounded.get("targetDate") and not _date_mentioned(grounded["targetDate"], text):
+        grounded["targetDate"] = ""
+    if grounded.get("category") and not _category_mentioned(grounded["category"], text):
+        grounded["category"] = ""
+    return grounded
+
+
+def ground_import(parsed, source):
+    if not parsed:
+        return None
+    text = str(source or "")
+    teams = []
+    for team in parsed["teams"]:
+        if not _team_mentioned(team["name"], text):
+            continue
+        team["members"] = _people_mentioned(team["members"], text)
+        if team["jira"] and not _ticket_mentioned(team["jira"], text):
+            team["jira"] = ""
+        if team["status"] and not _status_mentioned(team["status"], text):
+            team["status"] = ""
+        if team["targetDate"] and not _date_mentioned(team["targetDate"], text):
+            team["targetDate"] = ""
+        teams.append(team)
+    updates = []
+    for update in parsed["updates"]:
+        if not _date_mentioned(update["date"], text) or not _words_supported(update["description"], text):
+            continue
+        if update["teamName"] and not _team_mentioned(update["teamName"], text):
+            update["teamName"] = ""
+        update["people"] = _people_mentioned(update["people"], text)
+        if update["jira"] and not _ticket_mentioned(update["jira"], text):
+            update["jira"] = ""
+        if update["status"] and not _status_mentioned(update["status"], text):
+            update["status"] = ""
+        if update["targetDate"] and not _date_mentioned(update["targetDate"], text):
+            update["targetDate"] = ""
+        if not _category_mentioned(update["category"], text):
+            update["category"] = "discussion"
+        update["tags"] = [tag for tag in update["tags"] if _words_supported(tag, text)]
+        updates.append(update)
+    actions = []
+    for action in parsed["actions"]:
+        if not _words_supported(action["title"], text):
+            continue
+        if action["owner"] != "Me":
+            action["owner"] = _people_mentioned(action["owner"], text) or "Me"
+        if action["teamName"] and not _team_mentioned(action["teamName"], text):
+            action["teamName"] = ""
+        if action["jira"] and not _ticket_mentioned(action["jira"], text):
+            action["jira"] = ""
+        if action["dueDate"] and not _date_mentioned(action["dueDate"], text):
+            action["dueDate"] = ""
+        if not _status_mentioned(action["status"], text):
+            action["status"] = "pending"
+        actions.append(action)
     if not teams and not updates and not actions:
         return None
     return {"teams": teams, "updates": updates, "actions": actions, "errors": []}

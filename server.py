@@ -20,6 +20,8 @@ from neev import (
     chat_configured,
     embed_configured,
     extract_json,
+    ground_filed_note,
+    ground_import,
     load_config,
     NeevClient,
     sanitize_filed_note,
@@ -171,8 +173,8 @@ class TrackerHandler(SimpleHTTPRequestHandler):
             raw = neev_client().chat([
                 {"role": "system", "content": FILE_NOTE_SYSTEM},
                 {"role": "user", "content": json.dumps({"description": description[:4000], "teams": teams[:40]})},
-            ], max_tokens=400)
-            fields = sanitize_filed_note(extract_json(raw), teams[:40])
+            ], max_tokens=1024)
+            fields = ground_filed_note(sanitize_filed_note(extract_json(raw), teams[:40]), description)
         except (NeevError, json.JSONDecodeError, ValueError):
             self.ai_fallback()
             return
@@ -189,7 +191,7 @@ class TrackerHandler(SimpleHTTPRequestHandler):
                 {"role": "system", "content": PARSE_SYSTEM},
                 {"role": "user", "content": text[:40000]},
             ], max_tokens=4096)
-            parsed = sanitize_import(extract_json(raw))
+            parsed = ground_import(sanitize_import(extract_json(raw)), text)
         except (NeevError, json.JSONDecodeError, ValueError):
             self.ai_fallback()
             return
