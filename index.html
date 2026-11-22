@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tech Lead Daily Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-brand">
+                    <h1>Daily Tracker</h1>
+                    <p class="subtitle">Tech Lead Dashboard</p>
+                    <label class="your-name">
+                        <span>Your name</span>
+                        <input type="text" id="yourName" value="Kalpit" onchange="saveYourName()" title="Tasks with no owner use this name. The word Me is shown as this name.">
+                    </label>
+                </div>
+                <button class="theme-toggle" onclick="toggleDarkMode()" title="Toggle Dark Mode">
+                    <span class="theme-icon">🌙</span>
+                </button>
+            </div>
+            
+            <!-- Global Search -->
+            <div class="global-search">
+                <input type="text" id="globalSearch" placeholder="Search everything" oninput="scheduleSearch()" title="Searches every update, action item, person, team, tag, and ticket">
+                <span class="search-icon">🔍</span>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-view="daily">
+                    <span class="nav-icon">📝</span>
+                    <span>Daily Updates</span>
+                </li>
+                <li class="nav-item" data-view="actions">
+                    <span class="nav-icon">✅</span>
+                    <span>Action Items</span>
+                </li>
+                <li class="nav-item" data-view="teams">
+                    <span class="nav-icon">👥</span>
+                    <span>Teams</span>
+                </li>
+                <li class="nav-item" data-view="analytics">
+                    <span class="nav-icon">📈</span>
+                    <span>Analytics</span>
+                </li>
+                <li class="nav-item" data-view="weekly">
+                    <span class="nav-icon">📅</span>
+                    <span>Weekly Report</span>
+                </li>
+                <li class="nav-item" data-view="monthly">
+                    <span class="nav-icon">🗓️</span>
+                    <span>Monthly Report</span>
+                </li>
+                <li class="nav-item" data-view="quarterly">
+                    <span class="nav-icon">📊</span>
+                    <span>Quarterly Report</span>
+                </li>
+                <li class="nav-item" data-view="yearly">
+                    <span class="nav-icon">📆</span>
+                    <span>Yearly Report</span>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <div id="lastSavedIndicator" class="last-saved">Loading your notes…</div>
+                <div id="saveLocation" class="save-location">Looking for tracker-data.json…</div>
+                <button class="btn btn-primary" id="downloadAppraisal" onclick="downloadAppraisal()" title="Download the five-point appraisal write-up from your saved updates">
+                    <span>⭐</span> Self appraisal
+                </button>
+                <button class="btn btn-primary" onclick="document.getElementById('textImportFile').click()" title="Add teams, daily updates, and action items from a text file. Existing data is kept.">
+                    <span>📄</span> Upload Notes
+                </button>
+                <button class="btn btn-secondary" onclick="downloadImportTemplate()" title="Download the text format used by Upload Notes">
+                    <span>📋</span> Notes Template
+                </button>
+                <input type="file" id="textImportFile" accept=".txt,.md,text/plain" style="display:none" onchange="importTextFile(event)">
+                <button class="btn btn-secondary" onclick="exportData()" title="Download a backup file to keep your data safe">
+                    <span>💾</span> Download Backup
+                </button>
+                <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()" title="Replace all data from a JSON backup">
+                    <span>📂</span> Restore Backup
+                </button>
+                <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+                <button class="btn btn-danger" onclick="openDeletePeriodModal()" title="Delete notes and tasks for one day, week, month, or year">
+                    <span>🗑️</span> Delete a period
+                </button>
+                <button class="btn btn-danger" onclick="openResetDataModal()" title="Delete every note, task, and team">
+                    <span>⚠️</span> Reset everything
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard View -->
+            <section id="dashboard-view" class="view active">
+                <div class="view-header">
+                    <h2>Dashboard Overview</h2>
+                    <p class="date-display" id="currentDate"></p>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📝</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="todayUpdates">0</span>
+                            <span class="stat-label">Today's Updates</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⏳</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="pendingActions">0</span>
+                            <span class="stat-label">Pending Actions</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="completedActions">0</span>
+                            <span class="stat-label">Completed This Week</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="activeTeams">0</span>
+                            <span class="stat-label">Active Teams</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card recent-updates">
+                        <div class="card-header">
+                            <h3>Recent Updates</h3>
+                            <button class="btn btn-small" onclick="showView('daily')">View All</button>
+                        </div>
+                        <div class="card-body" id="recentUpdatesList">
+                            <p class="empty-state">No updates yet. Add your first daily update!</p>
+                        </div>
+                    </div>
+
+                    <div class="card pending-actions">
+                        <div class="card-header">
+                            <h3>Pending Action Items</h3>
+                            <button class="btn btn-small" onclick="showView('actions')">View All</button>
+                        </div>
+                        <div class="card-body" id="pendingActionsList">
+                            <p class="empty-state">No pending actions. Great job!</p>
+                        </div>
+                    </div>
+
+                    <div class="card team-summary">
+                        <div class="card-header">
+                            <h3>Team Activity</h3>
+                        </div>
+                        <div class="card-body" id="teamSummary">
+                            <p class="empty-state">No team activity recorded yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Daily Updates View -->
+            <section id="daily-view" class="view">
+                <div class="view-header">
+                    <h2>Daily Updates</h2>
+                    <button class="btn btn-primary" onclick="openAddUpdateModal()">+ Add Update</button>
+                </div>
+
+                <div class="filter-bar">
+                    <input type="date" id="filterDate" onchange="filterUpdates()">
+                    <select id="filterTeam" onchange="filterUpdates()">
+                        <option value="">All Teams</option>
+                    </select>
+                    <select id="filterCategory" onchange="filterUpdates()">
+                        <option value="">All Categories</option>
+                        <option value="meeting">Meeting</option>
+                        <option value="discussion">Discussion</option>
+                        <option value="review">PR Review</option>
+                        <option value="approval">Approval</option>
+                        <option value="audit">Audit</option>
+                        <option value="planning">Planning</option>
+                        <option value="issue">Issue Resolution</option>
+                        <option value="other">Other</option>
+                    </select>
+                    <select id="sortUpdates" onchange="filterUpdates()">
+                        <option value="date-desc">Newest First</option>
+                        <option value="date-asc">Oldest First</option>
+                        <option value="category">By Category</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="clearFilters()">Clear Filters</button>
+                </div>
+
+                <div class="updates-list" id="dailyUpdatesList">
+                    <p class="empty-state">No daily updates yet. Click "Add Update" to get started!</p>
+                </div>
+            </section>
+
+            <!-- Action Items View -->
+            <section id="actions-view" class="view">
+                <div class="view-header">
+                    <h2>Action Items</h2>
+                    <button class="btn btn-primary" onclick="openAddActionModal()">+ Add Action Item</button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="filterActionStatus" onchange="filterActions()">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="blocked">Blocked</option>
+                    </select>
+                    <select id="filterActionOwner" onchange="filterActions()">
+                        <option value="">All Owners</option>
+                    </select>
+                    <select id="filterActionPriority" onchange="filterActions()">
+                        <option value="">All Priorities</option>
+                        <option value="high">High Priority</option>
+                        <option value="medium">Medium Priority</option>
+                        <option value="low">Low Priority</option>
+                    </select>
+                    <select id="filterActionTeam" onchange="filterActions()">
+                        <option value="">All Teams</option>
+                    </select>
+                    <select id="sortActions" onchange="filterActions()">
+                        <option value="priority">By Priority</option>
+                        <option value="due-date">By Due Date</option>
+                        <option value="owner">By Owner</option>
+                        <option value="created">By Created Date</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="clearActionFilters()">Clear Filters</button>
+                </div>
+
+                <div class="actions-board">
+                    <div class="action-column" data-status="pending">
+                        <div class="column-header">
+                            <span class="status-dot pending"></span>
+                            <h4>Pending</h4>
+                            <span class="count" id="pendingCount">0</span>
+                        </div>
+                        <div class="action-list" id="pendingActionItems"></div>
+                    </div>
+                    <div class="action-column" data-status="in-progress">
+                        <div class="column-header">
+                            <span class="status-dot in-progress"></span>
+                            <h4>In Progress</h4>
+                            <span class="count" id="inProgressCount">0</span>
+                        </div>
+                        <div class="action-list" id="inProgressActionItems"></div>
+                    </div>
+                    <div class="action-column" data-status="completed">
+                        <div class="column-header">
+                            <span class="status-dot completed"></span>
+                            <h4>Completed</h4>
+                            <span class="count" id="completedCount">0</span>
+                        </div>
+                        <div class="action-list" id="completedActionItems"></div>
+                    </div>
+                    <div class="action-column" data-status="blocked">
+                        <div class="column-header">
+                            <span class="status-dot blocked"></span>
+                            <h4>Blocked</h4>
+                            <span class="count" id="blockedCount">0</span>
+                        </div>
+                        <div class="action-list" id="blockedActionItems"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Teams View -->
+            <section id="teams-view" class="view">
+                <div class="view-header">
+                    <h2>Teams</h2>
+                    <button class="btn btn-primary" onclick="openAddTeamModal()">+ Add Team</button>
+                </div>
+
+                <div class="teams-grid" id="teamsGrid">
+                    <p class="empty-state">No teams added yet. Click "Add Team" to get started!</p>
+                </div>
+            </section>
+
+            <!-- Search Results View -->
+            <section id="search-view" class="view">
+                <div class="view-header">
+                    <h2>Search Results</h2>
+                    <button class="btn btn-secondary" onclick="closeSearch()">← Back</button>
+                </div>
+                <div id="searchResults" class="search-results">
+                    <p class="empty-state">Type to search...</p>
+                </div>
+            </section>
+
+            <!-- Analytics View -->
+            <section id="analytics-view" class="view">
+                <div class="view-header">
+                    <h2>Analytics & Insights</h2>
+                    <div class="header-actions">
+                        <p id="analyticsPeriodLabel" class="date-display"></p>
+                        <select id="analyticsRange" class="styled-select" onchange="updateAnalytics()">
+                            <option value="7">Last 7 days</option>
+                            <option value="14">Last 14 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="thisQuarter">This quarter</option>
+                            <option value="lastQuarter">Last quarter</option>
+                            <option value="thisHalf">This half year</option>
+                            <option value="lastHalf">Last half year</option>
+                            <option value="thisYear">This year</option>
+                            <option value="lastYear">Last year</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="analytics-grid">
+                    <!-- Activity Chart -->
+                    <div class="card analytics-card wide">
+                        <div class="card-header">
+                            <h3>Activity Over Time</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" id="activityChart"></div>
+                        </div>
+                    </div>
+
+                    <!-- Category Breakdown -->
+                    <div class="card analytics-card">
+                        <div class="card-header">
+                            <h3>Updates by Category</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" id="categoryChart"></div>
+                        </div>
+                    </div>
+
+                    <!-- Team Activity -->
+                    <div class="card analytics-card">
+                        <div class="card-header">
+                            <h3>Team Activity</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" id="teamChart"></div>
+                        </div>
+                    </div>
+
+                    <!-- Action Stats -->
+                    <div class="card analytics-card">
+                        <div class="card-header">
+                            <h3>Action Items Status</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" id="actionStatusChart"></div>
+                        </div>
+                    </div>
+
+                    <!-- Top Contributors -->
+                    <div class="card analytics-card">
+                        <div class="card-header">
+                            <h3>People You Work With Most</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="topPeopleList" class="top-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Productivity Stats -->
+                    <div class="card analytics-card wide">
+                        <div class="card-header">
+                            <h3>Productivity Insights</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="insights-grid" id="productivityInsights"></div>
+                        </div>
+                    </div>
+
+                    <!-- Tags Cloud -->
+                    <div class="card analytics-card wide">
+                        <div class="card-header">
+                            <h3>Tags Cloud</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="tags-cloud" id="tagsCloud"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Weekly Report View -->
+            <section id="weekly-view" class="view">
+                <div class="view-header">
+                    <h2>Weekly Report</h2>
+                    <div class="header-actions">
+                        <input type="week" id="weekSelector" onchange="generateWeeklyReport()">
+                        <div class="team-picker" id="reportTeamWeek" data-period="week">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
+                        <input type="text" class="ask-input" id="askWeek" placeholder="Ask this week" onkeydown="if (event.key === 'Enter') askReport('week')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('week')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskWeek" onclick="copyAskAnswer('week')" disabled>Copy answer</button>
+                        <button class="btn btn-secondary" id="copyWeeklyReport" onclick="copyReportToClipboard()">📋 Copy for Email</button>
+                        <button class="btn btn-primary" id="downloadWeeklyPdf" onclick="exportWeeklyReport()">📄 Export PDF</button>
+                    </div>
+                </div>
+                <p id="askWeekAnswer" class="ask-answer" hidden></p>
+
+                <div class="weekly-report" id="weeklyReport">
+                    <p class="empty-state">Choose a week to build the management update.</p>
+                </div>
+            </section>
+
+            <section id="monthly-view" class="view">
+                <div class="view-header">
+                    <h2>Monthly Report</h2>
+                    <div class="header-actions">
+                        <input type="month" id="monthSelector" onchange="generatePeriodReport('month')">
+                        <div class="team-picker" id="reportTeamMonth" data-period="month">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
+                        <input type="text" class="ask-input" id="askMonth" placeholder="Ask this month" onkeydown="if (event.key === 'Enter') askReport('month')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('month')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskMonth" onclick="copyAskAnswer('month')" disabled>Copy answer</button>
+                        <button class="btn btn-secondary" id="copyMonthlyReport" onclick="copyReportToClipboard('month')">📋 Copy for Email</button>
+                        <button class="btn btn-primary" id="downloadMonthlyPdf" onclick="exportWeeklyReport('month')">📄 Export PDF</button>
+                    </div>
+                </div>
+                <p id="askMonthAnswer" class="ask-answer" hidden></p>
+                <div class="weekly-report" id="monthlyReport">
+                    <p class="empty-state">Choose a month to build the management update.</p>
+                </div>
+            </section>
+
+            <section id="quarterly-view" class="view">
+                <div class="view-header">
+                    <h2>Quarterly Report</h2>
+                    <div class="header-actions">
+                        <input type="number" id="quarterYear" min="2000" max="2100" title="Year" onchange="generatePeriodReport('quarter')">
+                        <select id="quarterPart" onchange="generatePeriodReport('quarter')">
+                            <option value="1">Q1 · Jan–Mar</option>
+                            <option value="2">Q2 · Apr–Jun</option>
+                            <option value="3">Q3 · Jul–Sep</option>
+                            <option value="4">Q4 · Oct–Dec</option>
+                        </select>
+                        <div class="team-picker" id="reportTeamQuarter" data-period="quarter">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
+                        <input type="text" class="ask-input" id="askQuarter" placeholder="Ask this quarter" onkeydown="if (event.key === 'Enter') askReport('quarter')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('quarter')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskQuarter" onclick="copyAskAnswer('quarter')" disabled>Copy answer</button>
+                        <button class="btn btn-secondary" id="copyQuarterlyReport" onclick="copyReportToClipboard('quarter')">📋 Copy for Email</button>
+                        <button class="btn btn-primary" id="downloadQuarterlyPdf" onclick="exportWeeklyReport('quarter')">📄 Export PDF</button>
+                    </div>
+                </div>
+                <p id="askQuarterAnswer" class="ask-answer" hidden></p>
+                <div class="weekly-report" id="quarterlyReport">
+                    <p class="empty-state">Choose a quarter to build the management update.</p>
+                </div>
+            </section>
+
+            <section id="yearly-view" class="view">
+                <div class="view-header">
+                    <h2>Yearly Report</h2>
+                    <div class="header-actions">
+                        <input type="number" id="yearSelector" min="2000" max="2100" title="Financial year starting 1 April. 2026 means 1 Apr 2026 to 31 Mar 2027." onchange="generatePeriodReport('year')">
+                        <div class="team-picker" id="reportTeamYear" data-period="year">
+                            <button type="button" class="team-picker-button" aria-expanded="false" aria-haspopup="true">All teams</button>
+                            <div class="team-picker-menu" hidden></div>
+                        </div>
+                        <input type="text" class="ask-input" id="askYear" placeholder="Ask this year" onkeydown="if (event.key === 'Enter') askReport('year')">
+                        <button type="button" class="btn btn-secondary" onclick="askReport('year')">Ask</button>
+                        <button type="button" class="btn btn-secondary" id="copyAskYear" onclick="copyAskAnswer('year')" disabled>Copy answer</button>
+                        <button class="btn btn-secondary" id="copyYearlyReport" onclick="copyReportToClipboard('year')">📋 Copy for Email</button>
+                        <button class="btn btn-primary" id="downloadYearlyPdf" onclick="exportWeeklyReport('year')">📄 Export PDF</button>
+                    </div>
+                </div>
+                <p id="askYearAnswer" class="ask-answer" hidden></p>
+                <div class="weekly-report" id="yearlyReport">
+                    <p class="empty-state">Choose a year to build the management update.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="teamUpdatesModal" class="modal">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h3 id="teamUpdatesTitle">Team updates</h3>
+                <button class="close-btn" type="button" onclick="closeModal('teamUpdatesModal')">&times;</button>
+            </div>
+            <p id="teamUpdatesNote" class="team-updates-note"></p>
+            <div id="teamUpdatesList" class="team-update-list"></div>
+        </div>
+    </div>
+
+    <!-- Add Update Modal -->
+    <div id="addUpdateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Daily Update</h3>
+                <button class="close-btn" onclick="closeModal('addUpdateModal')">&times;</button>
+            </div>
+            <form id="addUpdateForm" onsubmit="saveUpdate(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="updateDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Target date (optional)</label>
+                        <input type="date" id="updateTargetDate">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="updateCategory" required>
+                        <option value="meeting">Meeting</option>
+                        <option value="discussion">Discussion</option>
+                        <option value="review">PR Review</option>
+                        <option value="approval">Approval</option>
+                        <option value="audit">Audit</option>
+                        <option value="planning">Planning</option>
+                        <option value="issue">Issue Resolution</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Team (Optional)</label>
+                    <select id="updateTeam">
+                        <option value="">Select Team</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="updateDescription" rows="4" required placeholder="What did you work on?"></textarea>
+                    <p id="fileUpdateStatus" class="file-note-status"></p>
+                </div>
+                <div class="form-group">
+                    <label>People Involved (comma separated)</label>
+                    <input type="text" id="updatePeople" placeholder="e.g., Rajesh, Sunita, Chandan">
+                </div>
+                <div class="form-group">
+                    <label>Tags (comma separated)</label>
+                    <input type="text" id="updateTags" placeholder="e.g., urgent, follow-up, blocked">
+                    <div class="tag-suggestions" id="tagSuggestions"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Jira number (optional)</label>
+                        <input type="text" id="updateJira" placeholder="e.g., RITM8019234">
+                    </div>
+                    <div class="form-group">
+                        <label>Status (optional)</label>
+                        <select id="updateStatus">
+                            <option value="">No status</option>
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="blocked">Blocked</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addUpdateModal')">Cancel</button>
+                    <button type="button" class="btn btn-secondary" id="fileUpdate" onclick="fileUpdateWithAI()">File this note</button>
+                    <button type="submit" class="btn btn-primary">Save Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Action Modal -->
+    <div id="addActionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Action Item</h3>
+                <button class="close-btn" onclick="closeModal('addActionModal')">&times;</button>
+            </div>
+            <form id="addActionForm" onsubmit="saveAction(event)">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="actionTitle" required placeholder="Action item title">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="actionDescription" rows="3" placeholder="Additional details..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Owner</label>
+                        <input type="text" id="actionOwner" required placeholder="Who is responsible?">
+                    </div>
+                    <div class="form-group">
+                        <label>Priority</label>
+                        <select id="actionPriority" required>
+                            <option value="high">High</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Target date</label>
+                        <input type="date" id="actionDueDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Team</label>
+                        <select id="actionTeam">
+                            <option value="">Select Team</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Jira number (optional)</label>
+                    <input type="text" id="actionJira" placeholder="e.g., RITM8019234">
+                </div>
+                <div class="form-group">
+                    <label>Recurring</label>
+                    <select id="actionRecurring">
+                        <option value="">Not recurring</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="biweekly">Bi-weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addActionModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Action</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Team Modal -->
+    <div id="addTeamModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Team</h3>
+                <button class="close-btn" onclick="closeModal('addTeamModal')">&times;</button>
+            </div>
+            <form id="addTeamForm" onsubmit="saveTeam(event)">
+                <div class="form-group">
+                    <label>Team Name</label>
+                    <input type="text" id="teamName" required placeholder="e.g., Performance Pod">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="teamDescription" rows="2" placeholder="Team focus area..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Team Members (comma separated)</label>
+                    <input type="text" id="teamMembers" placeholder="e.g., Rajesh, Sunita, Chandan">
+                </div>
+                <div class="form-group">
+                    <label>Target date (optional)</label>
+                    <input type="date" id="teamTargetDate">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Jira number (optional)</label>
+                        <input type="text" id="teamJira" placeholder="e.g., RITM8019234">
+                    </div>
+                    <div class="form-group">
+                        <label>Status (optional)</label>
+                        <select id="teamStatus">
+                            <option value="">No status</option>
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="blocked">Blocked</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Color</label>
+                    <input type="color" id="teamColor" value="#4F46E5">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addTeamModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Team</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Update Modal -->
+    <div id="editUpdateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Update</h3>
+                <button class="close-btn" onclick="closeModal('editUpdateModal')">&times;</button>
+            </div>
+            <form id="editUpdateForm" onsubmit="updateUpdate(event)">
+                <input type="hidden" id="editUpdateId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="editUpdateDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Target date (optional)</label>
+                        <input type="date" id="editUpdateTargetDate">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="editUpdateCategory" required>
+                        <option value="meeting">Meeting</option>
+                        <option value="discussion">Discussion</option>
+                        <option value="review">PR Review</option>
+                        <option value="approval">Approval</option>
+                        <option value="audit">Audit</option>
+                        <option value="planning">Planning</option>
+                        <option value="issue">Issue Resolution</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Team (Optional)</label>
+                    <select id="editUpdateTeam">
+                        <option value="">Select Team</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="editUpdateDescription" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>People Involved (comma separated)</label>
+                    <input type="text" id="editUpdatePeople" placeholder="e.g., Rajesh, Sunita, Chandan">
+                </div>
+                <div class="form-group">
+                    <label>Tags (comma separated)</label>
+                    <input type="text" id="editUpdateTags" placeholder="e.g., urgent, follow-up, blocked">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Jira number (optional)</label>
+                        <input type="text" id="editUpdateJira" placeholder="e.g., RITM8019234">
+                    </div>
+                    <div class="form-group">
+                        <label>Status (optional)</label>
+                        <select id="editUpdateStatus">
+                            <option value="">No status</option>
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="blocked">Blocked</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" onclick="deleteUpdateFromModal()">Delete</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('editUpdateModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Team Modal -->
+    <div id="editTeamModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Team</h3>
+                <button class="close-btn" onclick="closeModal('editTeamModal')">&times;</button>
+            </div>
+            <form id="editTeamForm" onsubmit="updateTeam(event)">
+                <input type="hidden" id="editTeamId">
+                <div class="form-group">
+                    <label>Team Name</label>
+                    <input type="text" id="editTeamName" required placeholder="e.g., Performance Pod">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="editTeamDescription" rows="2" placeholder="Team focus area..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Team Members (comma separated)</label>
+                    <input type="text" id="editTeamMembers" placeholder="e.g., Rajesh, Sunita, Chandan">
+                </div>
+                <div class="form-group">
+                    <label>Target date (optional)</label>
+                    <input type="date" id="editTeamTargetDate">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Jira number (optional)</label>
+                        <input type="text" id="editTeamJira" placeholder="e.g., RITM8019234">
+                    </div>
+                    <div class="form-group">
+                        <label>Status (optional)</label>
+                        <select id="editTeamStatus">
+                            <option value="">No status</option>
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="blocked">Blocked</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Color</label>
+                    <input type="color" id="editTeamColor" value="#4F46E5">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" onclick="deleteTeamFromModal()">Delete</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('editTeamModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Action Modal -->
+    <div id="editActionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Action Item</h3>
+                <button class="close-btn" onclick="closeModal('editActionModal')">&times;</button>
+            </div>
+            <form id="editActionForm" onsubmit="updateAction(event)">
+                <input type="hidden" id="editActionId">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="editActionTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="editActionDescription" rows="3"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Owner</label>
+                        <input type="text" id="editActionOwner" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select id="editActionStatus" required>
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="blocked">Blocked</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Priority</label>
+                        <select id="editActionPriority" required>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Target date</label>
+                        <input type="date" id="editActionDueDate">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Team</label>
+                        <select id="editActionTeam">
+                            <option value="">Select Team</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Recurring</label>
+                        <select id="editActionRecurring">
+                            <option value="">Not recurring</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Jira number (optional)</label>
+                    <input type="text" id="editActionJira" placeholder="e.g., RITM8019234">
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="editActionNotes" rows="2" placeholder="Add progress notes..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" onclick="deleteAction()">Delete</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('editActionModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="deleteDataModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="deleteDataTitle">Delete a period</h3>
+                <button class="close-btn" type="button" onclick="closeModal('deleteDataModal')">&times;</button>
+            </div>
+            <form id="deleteDataForm" onsubmit="approveDataDelete(event)">
+                <div id="deletePeriodFields">
+                    <div class="form-group">
+                        <label for="deleteRangeKind">Delete data for</label>
+                        <select id="deleteRangeKind" onchange="syncDeleteRangeFields()">
+                            <option value="day">A day</option>
+                            <option value="week">A week</option>
+                            <option value="month">A month</option>
+                            <option value="year">A year</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="deleteDayField">
+                        <label for="deleteDay">Day</label>
+                        <input type="date" id="deleteDay" oninput="previewDataDelete()">
+                    </div>
+                    <div class="form-group" id="deleteWeekField" hidden>
+                        <label for="deleteWeek">Week</label>
+                        <input type="week" id="deleteWeek" oninput="previewDataDelete()">
+                    </div>
+                    <div class="form-group" id="deleteMonthField" hidden>
+                        <label for="deleteMonth">Month</label>
+                        <input type="month" id="deleteMonth" oninput="previewDataDelete()">
+                    </div>
+                    <div class="form-group" id="deleteYearField" hidden>
+                        <label for="deleteYear">Year</label>
+                        <input type="number" id="deleteYear" min="2000" max="2100" oninput="previewDataDelete()">
+                    </div>
+                </div>
+                <p id="deleteDataSummary" class="delete-summary"></p>
+                <div class="form-group">
+                    <label for="deleteConfirmText">Type confirm to approve</label>
+                    <input type="text" id="deleteConfirmText" autocomplete="off" spellcheck="false" placeholder="confirm" oninput="syncDeleteApproval()">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('deleteDataModal')">Cancel</button>
+                    <button type="submit" class="btn btn-danger" id="deleteDataApprove" disabled>Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="importResultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Notes upload</h3>
+                <button class="close-btn" onclick="closeModal('importResultModal')">&times;</button>
+            </div>
+            <div id="importResultBody" class="import-result"></div>
+        </div>
+    </div>
+
+    <script src="import-parser.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
