@@ -8,6 +8,11 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
+if [ ! -f neev.env ]; then
+    echo "Ask is off until neev.env exists in this folder."
+    echo "Copy neev.env.example to neev.env and set NEEV_CHAT_API_KEY."
+fi
+
 python3 server.py &
 server_pid=$!
 

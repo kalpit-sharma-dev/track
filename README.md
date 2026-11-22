@@ -387,7 +387,7 @@ The label next to the menu shows the exact start and end dates. Charts, teams, p
 
 The assistant is optional. The tracker keeps working when it is not configured or when a call fails.
 
-Set these in the environment before starting `server.py`. Leave the keys out of the repository.
+Copy `neev.env.example` to `neev.env` in the app folder and set the two keys. Double-clicking the tracker does not see variables exported in Terminal. `neev.env` is read on each question, so click Ask again after saving it. Leave the keys out of the repository.
 
 | Name | Meaning |
 | --- | --- |

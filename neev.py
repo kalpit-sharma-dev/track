@@ -6,6 +6,7 @@ logged. A missing key or a failed call is a NeevError so the tracker can
 keep its existing behavior.
 """
 
+import ipaddress
 import json
 import os
 import random
@@ -15,6 +16,8 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
+from urllib.parse import urlparse
 
 CATEGORIES = {"meeting", "discussion", "review", "approval", "audit", "planning", "issue", "other"}
 STATUSES = {"pending", "in-progress", "completed", "blocked"}
@@ -37,6 +40,12 @@ STATUS_ALIASES = {
 PRIORITIES = {"low", "medium", "high"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RETRYABLE_TEXT = ("rate_limit", "rate limit", "resource_exhausted", "provisioned throughput", "provisioned-throughput")
+# DEV gateway from the NEEV integration reference. Override any of these in neev.env.
+DEV_CHAT_URL = "https://10.216.70.62/DEV/litellm/chat/completions"
+DEV_EMBED_URL = "https://10.216.70.62/DEV/litellm/v1/embeddings"
+DEV_USECASE = "drishti-ai"
+ENV_FILE = Path(__file__).resolve().parent / "neev.env"
+MISSING_CHAT_KEY = "Add NEEV_CHAT_API_KEY to neev.env in the app folder, then click Ask again."
 
 
 class NeevError(Exception):
@@ -74,17 +83,61 @@ def _duration(value, default):
         raise NeevError("Neev timeout or interval is not a number") from error
 
 
-def load_config(env=None):
-    source = os.environ if env is None else env
-    insecure = str(source.get("NEEV_INSECURE_SKIP_VERIFY", "")).strip().lower() in {"1", "true", "yes"}
+def _read_env_file(path):
+    values = {}
+    file_path = Path(path)
+    if not file_path.is_file():
+        return values
+    for raw_line in file_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key.lower().startswith("export "):
+            key = key[7:].strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if key:
+            values[key] = value
+    return values
+
+
+def _host_is_ip(url):
+    host = urlparse(str(url or "")).hostname or ""
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
+def load_config(env=None, env_file=None):
+    if env is None:
+        source = _read_env_file(ENV_FILE if env_file is None else env_file)
+        for key, value in os.environ.items():
+            if key.startswith("NEEV_") and str(value).strip():
+                source[key] = value
+    else:
+        source = dict(env)
+    chat_url = str(source.get("NEEV_CHAT_URL", "")).strip() or DEV_CHAT_URL
+    embed_url = str(source.get("NEEV_EMBED_URL", "")).strip() or DEV_EMBED_URL
+    verify_flag = source.get("NEEV_INSECURE_SKIP_VERIFY")
+    if verify_flag is None or str(verify_flag).strip() == "":
+        insecure = _host_is_ip(chat_url) or _host_is_ip(embed_url)
+    else:
+        insecure = str(verify_flag).strip().lower() in {"1", "true", "yes"}
     return {
-        "chat_url": str(source.get("NEEV_CHAT_URL", "")).strip(),
+        "chat_url": chat_url,
         "chat_key": str(source.get("NEEV_CHAT_API_KEY", "")).strip(),
         "chat_model": str(source.get("NEEV_CHAT_MODEL", "")).strip() or "gemini-2.5-flash",
-        "embed_url": str(source.get("NEEV_EMBED_URL", "")).strip(),
+        "embed_url": embed_url,
         "embed_key": str(source.get("NEEV_EMBED_API_KEY", "")).strip(),
         "embed_model": str(source.get("NEEV_EMBED_MODEL", "")).strip() or "BAAI/bge-m3",
-        "usecase": str(source.get("NEEV_USECASE_ID", "")).strip(),
+        "usecase": str(source.get("NEEV_USECASE_ID", "")).strip() or DEV_USECASE,
         "insecure": insecure,
         "timeout": _duration(source.get("NEEV_TIMEOUT"), 60),
         "min_interval": _duration(source.get("NEEV_MIN_INTERVAL"), 7),
@@ -109,7 +162,9 @@ class NeevClient:
 
     def chat(self, messages, temperature=0, max_tokens=1200):
         if not chat_configured(self.config):
-            raise NeevError("Neev chat is not configured")
+            if not self.config.get("chat_key"):
+                raise NeevError(MISSING_CHAT_KEY)
+            raise NeevError("Add NEEV_CHAT_URL to neev.env in the app folder, then click Ask again.")
         if not messages:
             raise NeevError("Neev chat needs a message")
         body = {
@@ -214,8 +269,8 @@ class NeevClient:
                 raw = error.read()
                 status = error.code
                 retry_after = error.headers.get("Retry-After") if error.headers else None
-            except (urllib.error.URLError, TimeoutError, OSError):
-                last_error = "Neev could not be reached"
+            except (urllib.error.URLError, TimeoutError, OSError) as error:
+                last_error = _reachability_error(url, error)
                 if attempt == 3:
                     break
                 self._sleep(delay, deadline)
@@ -238,7 +293,12 @@ class NeevClient:
                         continue
                     raise NeevError("Neev rejected the request")
                 return payload
-            last_error = "Neev rate limit" if self._retryable(status, text) else "Neev rejected the request"
+            if status in (401, 403):
+                last_error = "The Neev gateway rejected the API key in neev.env."
+            elif self._retryable(status, text):
+                last_error = "Neev rate limit"
+            else:
+                last_error = "Neev rejected the request"
             if not self._retryable(status, text) or attempt == 3:
                 break
             self._sleep(self._retry_wait(retry_after, delay), deadline)
@@ -266,6 +326,14 @@ class NeevClient:
         if delay <= 0 or time.monotonic() + delay > deadline:
             return
         time.sleep(delay)
+
+
+def _reachability_error(url, error):
+    host = urlparse(url).hostname or "the Neev gateway"
+    text = str(getattr(error, "reason", error))
+    if "CERTIFICATE" in text.upper() or "certificate" in text.lower() or "SSL" in text:
+        return f"The certificate for {host} was rejected. Set NEEV_INSECURE_SKIP_VERIFY=true in neev.env, then click Ask again."
+    return f"The assistant could not reach {host}. Connect to the network that can open the Neev gateway, then click Ask again."
 
 
 def _header(response, name):

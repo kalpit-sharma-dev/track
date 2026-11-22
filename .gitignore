@@ -2,4 +2,5 @@ tracker-data.json
 tracker-data.json.tmp
 tracker-embeddings.json
 tracker-embeddings.json.tmp
+neev.env
 __pycache__/

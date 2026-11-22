@@ -60,7 +60,14 @@ class TrackerHandler(SimpleHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/api/ai/status":
             config = load_config()
-            self.send_json(200, {"chat": chat_configured(config), "embed": embed_configured(config)})
+            reason = ""
+            if not config.get("chat_key"):
+                reason = "Add NEEV_CHAT_API_KEY to neev.env in the app folder, then click Ask again."
+            self.send_json(200, {
+                "chat": chat_configured(config),
+                "embed": embed_configured(config),
+                "reason": reason,
+            })
             return
         if path == "/api/embeddings":
             body = EMBED_FILE.read_bytes() if EMBED_FILE.exists() else b'{"vectors":{}}'
@@ -142,8 +149,8 @@ class TrackerHandler(SimpleHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError):
             return None
 
-    def ai_fallback(self):
-        self.send_json(503, {"ok": False, "fallback": True})
+    def ai_fallback(self, reason="The assistant is unavailable. Use Copy for Email for the full report."):
+        self.send_json(503, {"ok": False, "fallback": True, "reason": reason})
 
     def ai_ask(self):
         payload = self.read_json(80_000)
@@ -157,8 +164,8 @@ class TrackerHandler(SimpleHTTPRequestHandler):
                 {"role": "system", "content": ASK_SYSTEM + "\n\nReport:\n" + report[:20000]},
                 {"role": "user", "content": question[:1000]},
             ])
-        except NeevError:
-            self.ai_fallback()
+        except NeevError as error:
+            self.ai_fallback(str(error))
             return
         self.send_json(200, {"ok": True, "answer": answer})
 
@@ -175,8 +182,11 @@ class TrackerHandler(SimpleHTTPRequestHandler):
                 {"role": "user", "content": json.dumps({"description": description[:4000], "teams": teams[:40]})},
             ], max_tokens=1024)
             fields = ground_filed_note(sanitize_filed_note(extract_json(raw), teams[:40]), description)
-        except (NeevError, json.JSONDecodeError, ValueError):
-            self.ai_fallback()
+        except NeevError as error:
+            self.ai_fallback(str(error))
+            return
+        except (json.JSONDecodeError, ValueError):
+            self.ai_fallback("The assistant could not read this description. The form was left as you typed it.")
             return
         self.send_json(200, {"ok": True, "fields": fields})
 
@@ -192,11 +202,14 @@ class TrackerHandler(SimpleHTTPRequestHandler):
                 {"role": "user", "content": text[:40000]},
             ], max_tokens=4096)
             parsed = ground_import(sanitize_import(extract_json(raw)), text)
-        except (NeevError, json.JSONDecodeError, ValueError):
-            self.ai_fallback()
+        except NeevError as error:
+            self.ai_fallback(str(error))
+            return
+        except (json.JSONDecodeError, ValueError):
+            self.ai_fallback("The assistant could not read this file. The text template will be used.")
             return
         if not parsed:
-            self.ai_fallback()
+            self.ai_fallback("The assistant could not find records in this file. The text template will be used.")
             return
         self.send_json(200, {"ok": True, "parsed": parsed})
 
@@ -212,8 +225,8 @@ class TrackerHandler(SimpleHTTPRequestHandler):
             return
         try:
             vectors = neev_client().embed(clean)
-        except NeevError:
-            self.ai_fallback()
+        except NeevError as error:
+            self.ai_fallback(str(error))
             return
         self.send_json(200, {"ok": True, "embeddings": vectors})
 

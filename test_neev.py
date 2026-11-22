@@ -7,6 +7,7 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import neev
 import server
@@ -51,6 +52,28 @@ class ScriptedGateway(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         return
+
+
+class NeevConfigTest(unittest.TestCase):
+    def test_env_file_supplies_the_key_and_an_ip_host_skips_certificate_checks(self):
+        path = Path("/tmp/neev-test.env")
+        path.write_text('export NEEV_CHAT_API_KEY="from-file"\nNEEV_CHAT_URL=https://10.216.70.62/DEV/litellm/chat/completions\n', encoding="utf-8")
+        saved = {key: os.environ.pop(key) for key in list(os.environ) if key.startswith("NEEV_")}
+        try:
+            config = neev.load_config(env_file=path)
+            self.assertEqual(config["chat_key"], "from-file")
+            self.assertEqual(config["chat_url"], "https://10.216.70.62/DEV/litellm/chat/completions")
+            self.assertEqual(config["usecase"], "drishti-ai")
+            self.assertTrue(config["insecure"])
+            explicit = neev.load_config(env={
+                "NEEV_CHAT_URL": "https://10.216.70.62/DEV/litellm/chat/completions",
+                "NEEV_CHAT_API_KEY": "k",
+                "NEEV_INSECURE_SKIP_VERIFY": "false",
+            })
+            self.assertFalse(explicit["insecure"])
+        finally:
+            path.unlink(missing_ok=True)
+            os.environ.update(saved)
 
 
 class NeevClientTest(unittest.TestCase):
@@ -240,7 +263,11 @@ class TrackerRouteTest(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assertTrue(body["fallback"])
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/ai/status", timeout=5) as response:
-            self.assertEqual(json.loads(response.read().decode("utf-8")), {"chat": False, "embed": False})
+            status_body = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(status_body["chat"], False)
+        self.assertEqual(status_body["embed"], False)
+        self.assertIn("NEEV_CHAT_API_KEY", status_body["reason"])
+        self.assertIn("neev.env", body["reason"])
 
     def test_file_note_and_embeddings_round_trip(self):
         gateway = ThreadingHTTPServer(("127.0.0.1", 0), ScriptedGateway)

@@ -2873,13 +2873,30 @@ async function loadAiSupport() {
 }
 
 async function postAi(path, payload) {
-    const response = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    if (!response.ok) throw new Error('fallback');
-    return response.json();
+    let response;
+    try {
+        response = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } catch (error) {
+        const failure = new Error('offline');
+        failure.reason = 'The tracker server is not running. Start it with the Mac or Windows script, then try again.';
+        throw failure;
+    }
+    let body = {};
+    try {
+        body = await response.json();
+    } catch (error) {
+        body = {};
+    }
+    if (!response.ok) {
+        const failure = new Error('fallback');
+        failure.reason = body.reason || 'The assistant is unavailable. Use Copy for Email for the full report.';
+        throw failure;
+    }
+    return body;
 }
 
 function noteEmbedText(update) {
@@ -3032,20 +3049,17 @@ async function askReport(period) {
         answer.textContent = 'Choose a period first. The report itself is unchanged.';
         return;
     }
-    if (!aiStatus.chat) {
-        answer.textContent = 'The assistant is unavailable. Use Copy for Email for the full report.';
-        return;
-    }
     answer.textContent = 'Reading this report…';
     try {
         const body = await postAi('/api/ai/ask', {
             question,
             report: buildWeeklyEmail(latestReportModel)
         });
-        answer.textContent = body.answer || 'The assistant is unavailable. Use Copy for Email for the full report.';
+        answer.textContent = body.answer || body.reason || 'The assistant is unavailable. Use Copy for Email for the full report.';
         copy.disabled = !body.answer;
+        if (body.answer) aiStatus.chat = true;
     } catch (error) {
-        answer.textContent = 'The assistant is unavailable. Use Copy for Email for the full report.';
+        answer.textContent = error.reason || 'The assistant is unavailable. Use Copy for Email for the full report.';
         copy.disabled = true;
     }
 }
@@ -3073,10 +3087,6 @@ async function fileUpdateWithAI() {
         status.textContent = 'Write the description first.';
         return;
     }
-    if (!aiStatus.chat) {
-        status.textContent = 'The assistant is unavailable, so the form was left as you typed it.';
-        return;
-    }
     status.textContent = 'Reading the description…';
     try {
         const body = await postAi('/api/ai/file-note', {
@@ -3087,8 +3097,9 @@ async function fileUpdateWithAI() {
         status.textContent = applied
             ? 'Filled from the description. Nothing is saved until you click Save.'
             : 'Nothing in the description matched a team, person, ticket, status, or target date. The form was left as you typed it.';
+        if (applied) aiStatus.chat = true;
     } catch (error) {
-        status.textContent = 'The assistant is unavailable, so the form was left as you typed it.';
+        status.textContent = error.reason || 'The assistant is unavailable, so the form was left as you typed it.';
     }
 }
 
@@ -3126,14 +3137,15 @@ function applyFiledNote(fields) {
 }
 
 async function parseUploadedNotes(text) {
-    if (aiStatus.chat) {
-        try {
-            const body = await postAi('/api/ai/parse-notes', { text });
-            const parsed = body.parsed;
-            if (parsed && (parsed.updates.length || parsed.actions.length || parsed.teams.length)) return parsed;
-        } catch (error) {
-            return parseTextImport(text);
+    try {
+        const body = await postAi('/api/ai/parse-notes', { text });
+        const parsed = body.parsed;
+        if (parsed && (parsed.updates.length || parsed.actions.length || parsed.teams.length)) {
+            aiStatus.chat = true;
+            return parsed;
         }
+    } catch (error) {
+        return parseTextImport(text);
     }
     return parseTextImport(text);
 }
