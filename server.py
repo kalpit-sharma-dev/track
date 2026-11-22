@@ -75,6 +75,8 @@ class TrackerHandler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             html = payload.get("html")
             filename = payload.get("filename") or "weekly-report.pdf"
+            width = payload.get("width")
+            height = payload.get("height")
         except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
             self.send_error(400, "Expected a report document")
             return
@@ -85,7 +87,7 @@ class TrackerHandler(SimpleHTTPRequestHandler):
         if not safe_name.lower().endswith(".pdf"):
             safe_name += ".pdf"
         try:
-            pdf = render_report_pdf(html)
+            pdf = render_report_pdf(html, width, height)
         except (OSError, subprocess.TimeoutExpired, RuntimeError) as error:
             message = str(error).encode("utf-8")
             self.send_response(500)
@@ -129,10 +131,24 @@ def find_browser():
     return None
 
 
-def render_report_pdf(html):
+def pdf_window_size(width, height):
+    try:
+        page_width = int(width)
+        page_height = int(height)
+    except (TypeError, ValueError):
+        page_width, page_height = 1440, 2400
+    # Keep the print viewport wider than the 1200px layout breakpoint so the
+    # report stays in the same columns as the on-screen dashboard.
+    page_width = min(max(page_width, 1280), 4000)
+    page_height = min(max(page_height, 900), 40000)
+    return page_width, page_height
+
+
+def render_report_pdf(html, width=None, height=None):
     browser = find_browser()
     if not browser:
         raise RuntimeError("Chrome or Edge is required to download the PDF. Install one, then export again.")
+    page_width, page_height = pdf_window_size(width, height)
     with tempfile.TemporaryDirectory() as folder:
         html_path = Path(folder) / "report.html"
         pdf_path = Path(folder) / "report.pdf"
@@ -150,6 +166,7 @@ def render_report_pdf(html):
             "--no-default-browser-check",
             "--no-pdf-header-footer",
             "--hide-scrollbars",
+            f"--window-size={page_width},{page_height}",
             f"--print-to-pdf={pdf_path}",
             html_path.as_uri(),
         ]

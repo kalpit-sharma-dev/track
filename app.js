@@ -2213,15 +2213,30 @@ function getDateOfISOWeek(week, year) {
     return monday;
 }
 
+function gridTracks(root, selector, fallback) {
+    const el = root.querySelector(selector);
+    if (!el) return fallback;
+    const value = getComputedStyle(el).gridTemplateColumns;
+    return value && value !== 'none' ? value : fallback;
+}
+
 async function buildExactReportDocument(report) {
-    const width = Math.max(320, Math.ceil(report.getBoundingClientRect().width));
-    const height = Math.max(800, Math.ceil(report.scrollHeight) + 1200);
+    const previousOverflow = report.style.overflow;
+    report.style.overflow = 'visible';
+    const width = Math.max(720, Math.ceil(report.getBoundingClientRect().width));
+    const height = Math.max(900, Math.ceil(report.scrollHeight) + 64);
+    report.style.overflow = previousOverflow;
+    const statsTracks = gridTracks(report, '.mgmt-stats', 'repeat(6, minmax(0, 1fr))');
+    const insightTracks = gridTracks(report, '.insight-row', 'repeat(3, minmax(0, 1fr))');
     const cssResponse = await fetch('styles.css', { cache: 'no-store' });
     if (!cssResponse.ok) throw new Error('The report styles could not be loaded. Start the tracker with the Mac or Windows script, then export again.');
     const css = (await cssResponse.text()).replace(/<\/style/gi, '<\\/style');
     const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     const pageTitle = latestReportModel ? `${latestReportModel.label} ${latestReportModel.range}` : 'Management report';
-    return `<!DOCTYPE html>
+    return {
+        width,
+        height,
+        html: `<!DOCTYPE html>
 <html lang="en" data-theme="${theme}">
 <head>
 <meta charset="utf-8">
@@ -2230,13 +2245,18 @@ async function buildExactReportDocument(report) {
 <style>${css}</style>
 <style>
   html, body { margin: 0; padding: 0; background: ${theme === 'dark' ? '#0F172A' : '#F8FAFC'}; width: ${width}px; }
-  .weekly-report, .team-brief { overflow: visible !important; width: ${width}px; max-width: none; }
+  .weekly-report, .team-brief { overflow: visible !important; height: auto !important; max-height: none !important; width: ${width}px; max-width: none; }
+  .mgmt-stats { grid-template-columns: ${statsTracks} !important; }
+  .insight-row { grid-template-columns: ${insightTracks} !important; }
+  .team-brief-head { flex-direction: row !important; }
+  .team-counts { justify-content: flex-end !important; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page { size: ${width}px ${height}px; margin: 0; }
 </style>
 </head>
 <body>${report.outerHTML}</body>
-</html>`;
+</html>`
+    };
 }
 
 async function exportWeeklyReport(period = 'week') {
@@ -2254,12 +2274,17 @@ async function exportWeeklyReport(period = 'week') {
         button.textContent = 'Preparing PDF…';
     }
     try {
-        const html = await buildExactReportDocument(report);
+        const documentForPdf = await buildExactReportDocument(report);
         const filename = `management-update-${latestReportModel.fileKey}.pdf`;
         const response = await fetch('/api/report.pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ html, filename })
+            body: JSON.stringify({
+                html: documentForPdf.html,
+                filename,
+                width: documentForPdf.width,
+                height: documentForPdf.height
+            })
         });
         if (!response.ok) {
             const message = (await response.text()).trim();

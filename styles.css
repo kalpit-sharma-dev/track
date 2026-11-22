@@ -2797,24 +2797,49 @@ form {
     .sidebar, .view-header button, .header-actions, .filter-bar {
         display: none !important;
     }
-    
+
+    html, body, .app-container, .main-content, .view, .weekly-report, .team-brief {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        position: static !important;
+    }
+
     .main-content {
-        margin: 0;
-        padding: 20px;
+        margin: 0 !important;
+        padding: 20px !important;
+        max-width: none !important;
+        width: auto !important;
         background: white;
     }
-    
+
     .weekly-report,
     .team-brief {
-        overflow: visible !important;
         box-shadow: none;
+    }
+
+    .mgmt-stats {
+        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+
+    .insight-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .team-brief-head {
+        flex-direction: row !important;
+    }
+
+    .team-counts {
+        justify-content: flex-end !important;
     }
 
     * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
-    
+
     .view-header h2 {
         -webkit-text-fill-color: var(--text-primary);
         background: none;
