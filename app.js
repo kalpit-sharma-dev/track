@@ -571,8 +571,12 @@ function setCurrentPeriod(period) {
         document.getElementById('quarterYear').value = now.getFullYear();
         document.getElementById('quarterPart').value = String(Math.floor(now.getMonth() / 3) + 1);
     } else if (period === 'year') {
-        document.getElementById('yearSelector').value = now.getFullYear();
+        document.getElementById('yearSelector').value = financialYearStart(now);
     }
+}
+
+function financialYearStart(date) {
+    return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
 }
 
 function getISOWeek(date) {
@@ -1944,15 +1948,14 @@ function countInRange(items, dateOf, rangeStart, rangeEnd) {
 function timelineBuckets(items, model, dateOf) {
     const period = model.period || 'week';
     if (period === 'year') {
-        const year = model.weekStart.getFullYear();
-        return Array.from({ length: 12 }, (_, month) => {
-            const day = new Date(year, month, 1);
-            const rangeEnd = new Date(year, month + 1, 0);
+        return Array.from({ length: 12 }, (_, index) => {
+            const day = new Date(model.weekStart.getFullYear(), model.weekStart.getMonth() + index, 1);
+            const rangeEnd = endOfDay(new Date(day.getFullYear(), day.getMonth() + 1, 0));
             return {
                 day,
                 label: day.toLocaleDateString('en-US', { month: 'short' }),
                 date: '',
-                caption: day.toLocaleDateString('en-US', { month: 'long' }),
+                caption: day.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
                 count: countInRange(items, dateOf, day, rangeEnd)
             };
         });
@@ -2212,14 +2215,14 @@ function readPeriod(period) {
     if (period === 'year') {
         const year = Number(document.getElementById('yearSelector')?.value);
         if (!year || year < 2000 || year > 2100) return null;
-        const start = new Date(year, 0, 1);
-        const end = endOfDay(new Date(year, 11, 31));
+        const start = new Date(year, 3, 1);
+        const end = endOfDay(new Date(year + 1, 3, 0));
         return {
             start,
             end,
-            label: String(year),
+            label: `FY ${year}-${String(year + 1).slice(-2)}`,
             range: formatWeekRange(start, end),
-            fileKey: String(year),
+            fileKey: `FY${year}-${String(year + 1).slice(-2)}`,
             periodName: 'year'
         };
     }
