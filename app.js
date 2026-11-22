@@ -610,12 +610,12 @@ function formatDate(date, format = 'long') {
 
 // Populate team dropdowns
 function populateTeamDropdowns() {
-    const dropdowns = ['updateTeam', 'actionTeam', 'filterTeam', 'filterActionTeam'];
+    const dropdowns = ['updateTeam', 'actionTeam', 'filterTeam', 'filterActionTeam', 'reportTeamWeek', 'reportTeamMonth', 'reportTeamQuarter', 'reportTeamYear'];
     dropdowns.forEach(id => {
         const dropdown = document.getElementById(id);
         if (dropdown) {
             const currentValue = dropdown.value;
-            const isFilter = id.startsWith('filter');
+            const isFilter = id.startsWith('filter') || id.startsWith('reportTeam');
             dropdown.innerHTML = isFilter ? '<option value="">All Teams</option>' : '<option value="">Select Team</option>';
             appData.teams.forEach(team => {
                 dropdown.innerHTML += `<option value="${team.id}">${escapeHtml(team.name)}</option>`;
@@ -1851,7 +1851,9 @@ function managementLead(model, buckets, people) {
         return `Nothing was logged for this ${periodName}, and no open work falls inside it.`;
     }
     const sentences = [];
-    if (model.updates.length && buckets.active.length) {
+    if (model.teamName && model.updates.length) {
+        sentences.push(`${model.teamName}: ${countWord(model.updates.length, 'note was', 'notes were')} logged.`);
+    } else if (model.updates.length && buckets.active.length) {
         sentences.push(`${countWord(model.updates.length, 'note', 'notes')} across ${countWord(buckets.active.length, 'team', 'teams')}.`);
     } else if (model.updates.length) {
         sentences.push(`${countWord(model.updates.length, 'note', 'notes')} were logged, and none are tagged to a team.`);
@@ -1875,7 +1877,7 @@ function managementLead(model, buckets, people) {
     if (blockers.length === 1) sentences.push('1 blocker needs a decision.');
     else if (blockers.length) sentences.push(`${blockers.length} blockers need a decision.`);
     else sentences.push('No blockers are open.');
-    if (buckets.active[0]) sentences.push(`${buckets.active[0].team.name} had the most movement.`);
+    if (buckets.active[0] && !model.teamName) sentences.push(`${buckets.active[0].team.name} had the most movement.`);
     const busiestPerson = [...people].sort((a, b) => b.open - a.open || a.name.localeCompare(b.name))[0];
     if (busiestPerson && busiestPerson.open > 0) {
         sentences.push(`${busiestPerson.name} is carrying the most open work (${countWord(busiestPerson.open, 'task', 'tasks')}).`);
@@ -1888,7 +1890,7 @@ function insightTiles(model, buckets, people) {
     if (buckets.active[0]) {
         const pack = buckets.active[0];
         tiles.push({
-            kicker: 'Busiest team',
+            kicker: model.teamName ? 'This team' : 'Busiest team',
             title: pack.team.name,
             detail: `${countWord(pack.updates.length + (pack.carried || []).length + (pack.showcase || []).length, 'note', 'notes')}, ${countWord(pack.open.length, 'open task', 'open tasks')}, ${countWord(pack.done.length, 'finished', 'finished')}`
         });
@@ -2153,7 +2155,7 @@ function renderWeeklyHtml(model) {
             </section>
             ${attention}
             ${peopleBoard}
-            ${cards || (!loose ? `<p class="empty-state">No team had notes or open work in this ${escapeHtml(model.periodName || 'week')}.</p>` : '')}
+            ${cards || (!loose && !quiet ? `<p class="empty-state">${model.teamName ? `${escapeHtml(model.teamName)} had no notes or open work in this ${escapeHtml(model.periodName || 'week')}.` : `No team had notes or open work in this ${escapeHtml(model.periodName || 'week')}.`}</p>` : '')}
             ${loose}
             ${quiet}
             <p class="report-foot">Prepared from the daily tracker · ${escapeHtml(new Date().toLocaleString())}</p>
@@ -2234,6 +2236,36 @@ function readPeriod(period) {
     return null;
 }
 
+const REPORT_TEAM_FIELDS = {
+    week: 'reportTeamWeek',
+    month: 'reportTeamMonth',
+    quarter: 'reportTeamQuarter',
+    year: 'reportTeamYear'
+};
+
+function reportTeamId(period) {
+    return document.getElementById(REPORT_TEAM_FIELDS[period])?.value || '';
+}
+
+function filterModelToTeam(model, teamId) {
+    if (!teamId) return model;
+    const team = appData.teams.find(item => item.id === teamId);
+    const keep = item => item.teamId === teamId;
+    model.updates = model.updates.filter(keep);
+    model.carried = (model.carried || []).filter(keep);
+    model.showcase = (model.showcase || []).filter(keep);
+    model.openActions = model.openActions.filter(keep);
+    model.doneActions = model.doneActions.filter(keep);
+    model.teamId = teamId;
+    model.teamName = team ? team.name : '';
+    if (model.teamName) {
+        model.label = `${model.teamName} · ${model.label}`;
+        const slug = model.teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        model.fileKey = `${model.fileKey}-${slug || 'team'}`;
+    }
+    return model;
+}
+
 function generateWeeklyReport() {
     generatePeriodReport('week');
 }
@@ -2257,6 +2289,7 @@ function generatePeriodReport(period) {
     model.period = period;
     model.periodName = spec.periodName;
     model.fileKey = spec.fileKey;
+    filterModelToTeam(model, reportTeamId(period));
     latestReportModel = model;
     latestWeeklyModel = model;
     host.innerHTML = renderWeeklyHtml(model);

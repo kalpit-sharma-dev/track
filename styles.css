@@ -650,6 +650,10 @@ html {
     width: 108px;
 }
 
+.header-actions select.report-team {
+    min-width: 160px;
+}
+
 .header-actions input.ask-input {
     min-width: 180px;
     flex: 1;
